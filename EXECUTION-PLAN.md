@@ -3,18 +3,18 @@
 ## Epic 1: Authentication & Authorization (E1)
 
 ### Story E1-001: Database User Model
-- [ ] Create PostgreSQL database schema for users table
-- [ ] Define user table columns: id (UUID PRIMARY KEY), discord_id (BIGINT UNIQUE), email (VARCHAR), role (VARCHAR), created_at (TIMESTAMP), updated_at (TIMESTAMP)
-- [ ] Add database constraints for required fields and unique constraints
-- [ ] Create database index on discord_id column for fast lookups
-- [ ] Create database index on email column for authentication queries
-- [ ] Write database migration script using Alembic or equivalent
-- [ ] Test migration script on clean database instance
-- [ ] Implement database rollback migration for users table
-- [ ] Add database connection pooling configuration
-- [ ] Write unit tests for user model creation and validation
-- [ ] Verify foreign key relationships work correctly
-- [ ] Document user table schema and relationships
+- [x] Create PostgreSQL database schema for users table
+- [x] Define user table columns: id (UUID PRIMARY KEY), discord_id (BIGINT UNIQUE), email (VARCHAR), role (VARCHAR), created_at (TIMESTAMP), updated_at (TIMESTAMP)
+- [x] Add database constraints for required fields and unique constraints
+- [x] Create database index on discord_id column for fast lookups
+- [x] Create database index on email column for authentication queries
+- [x] Write database migration script using Alembic or equivalent
+- [x] Test migration script on clean database instance
+- [x] Implement database rollback migration for users table
+- [x] Add database connection pooling configuration
+- [x] Write unit tests for user model creation and validation
+- [x] Verify foreign key relationships work correctly
+- [x] Document user table schema and relationships
 
 ### Story E1-002: JWT Token Generation
 - [ ] Install PyJWT library and configure dependencies
