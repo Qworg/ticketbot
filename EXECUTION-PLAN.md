@@ -157,24 +157,24 @@
 - [x] Document status state machine and valid transitions
 
 ### Story E2-004: Get Ticket Details Endpoint
-- [ ] Create GET /api/tickets/{ticket_id} endpoint
-- [ ] Add path parameter validation for ticket_id format
-- [ ] Query database for ticket by ID with all related data
-- [ ] Check user permissions to view requested ticket
-- [ ] Join ticket data with creator user information
-- [ ] Join ticket data with assigned staff information if assigned
-- [ ] Include ticket participants in response
-- [ ] Include recent messages count in response
-- [ ] Format timestamps in ISO 8601 format
-- [ ] Return 404 Not Found for non-existent tickets
-- [ ] Return 403 Forbidden for insufficient permissions
-- [ ] Add response caching headers for performance
-- [ ] Create comprehensive ticket detail response model
-- [ ] Write unit tests for successful ticket retrieval
-- [ ] Write unit tests for permission checking
-- [ ] Write unit tests for non-existent ticket handling
-- [ ] Write integration tests with authentication
-- [ ] Document response format and field descriptions
+- [x] Create GET /api/tickets/{ticket_id} endpoint
+- [x] Add path parameter validation for ticket_id format
+- [x] Query database for ticket by ID with all related data
+- [x] Check user permissions to view requested ticket
+- [x] Join ticket data with creator user information
+- [x] Join ticket data with assigned staff information if assigned
+- [x] Include ticket participants in response
+- [x] Include recent messages count in response
+- [x] Format timestamps in ISO 8601 format
+- [x] Return 404 Not Found for non-existent tickets
+- [x] Return 403 Forbidden for insufficient permissions
+- [x] Add response caching headers for performance
+- [x] Create comprehensive ticket detail response model
+- [x] Write unit tests for successful ticket retrieval
+- [x] Write unit tests for permission checking
+- [x] Write unit tests for non-existent ticket handling
+- [x] Write integration tests with authentication
+- [x] Document response format and field descriptions
 
 ### Story E2-005: Update Ticket Endpoint
 - [ ] Create PATCH /api/tickets/{ticket_id} endpoint

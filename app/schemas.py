@@ -165,10 +165,44 @@ class ValidNextStatusesResponse(BaseModel):
     status_descriptions: dict
 
 
-class ErrorResponse(BaseModel):
+class UserSummary(BaseModel):
     """
-    Error response model.
+    Summary user information for inclusion in ticket responses.
     """
-    success: bool = False
-    error: str
-    detail: Optional[str] = None
+    id: str  # UUID as string
+    discord_id: int
+    email: Optional[str]
+    role: str
+    
+    class Config:
+        from_attributes = True
+
+
+class TicketDetailResponse(BaseModel):
+    """
+    Comprehensive ticket response with related user information.
+    """
+    id: int
+    channel_id: Optional[int]
+    guild_id: int
+    creator_id: int
+    assigned_to: Optional[int]
+    status: str
+    category: Optional[str]
+    reason: str
+    created_at: datetime
+    updated_at: datetime
+    closed_at: Optional[datetime]
+    close_reason: Optional[str]
+    is_shadow_closed: bool
+    
+    # Related user information
+    creator: Optional[UserSummary] = None
+    assigned_staff: Optional[UserSummary] = None
+    
+    # Additional metadata
+    participants_count: Optional[int] = None
+    recent_messages_count: Optional[int] = None
+
+    class Config:
+        from_attributes = True

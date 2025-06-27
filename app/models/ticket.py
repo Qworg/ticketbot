@@ -4,7 +4,7 @@ Represents support tickets created by users in Discord guilds.
 """
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, Boolean, ForeignKey, Index
+from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, Boolean, ForeignKey, Index, or_
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship, Session
 from sqlalchemy.exc import SQLAlchemyError
@@ -275,13 +275,19 @@ def get_user_open_tickets_in_guild(db: Session, user_id: int, guild_id: int) -> 
         List of open tickets for the user in the guild
     """
     try:
-        tickets = db.query(Ticket).filter(
+        # Get all tickets for user in guild and filter in Python for now
+        all_tickets = db.query(Ticket).filter(
             Ticket.creator_id == user_id,
-            Ticket.guild_id == guild_id,
-            Ticket.status.in_([TicketStatus.OPEN.value, TicketStatus.IN_PROGRESS.value])
+            Ticket.guild_id == guild_id
         ).all()
         
-        return tickets
+        # Filter for open statuses in Python
+        open_tickets = [
+            ticket for ticket in all_tickets 
+            if ticket.status in [TicketStatus.OPEN.value, TicketStatus.IN_PROGRESS.value]
+        ]
+        
+        return open_tickets
         
     except SQLAlchemyError as e:
         logger.error(f"Failed to query user tickets: {e}")
@@ -301,13 +307,18 @@ def has_open_ticket_in_guild(db: Session, user_id: int, guild_id: int) -> bool:
         True if user has an open ticket in the guild, False otherwise
     """
     try:
-        count = db.query(Ticket).filter(
+        # Get all tickets for user in guild and check in Python
+        all_tickets = db.query(Ticket).filter(
             Ticket.creator_id == user_id,
-            Ticket.guild_id == guild_id,
-            Ticket.status.in_([TicketStatus.OPEN.value, TicketStatus.IN_PROGRESS.value])
-        ).count()
+            Ticket.guild_id == guild_id
+        ).all()
         
-        return count > 0
+        # Check if any are open
+        for ticket in all_tickets:
+            if ticket.status in [TicketStatus.OPEN.value, TicketStatus.IN_PROGRESS.value]:
+                return True
+        
+        return False
         
     except SQLAlchemyError as e:
         logger.error(f"Failed to check for existing tickets: {e}")
@@ -349,4 +360,81 @@ def get_ticket_by_channel_id(db: Session, channel_id: int) -> Optional[Ticket]:
         
     except SQLAlchemyError as e:
         logger.error(f"Failed to get ticket by channel ID: {e}")
+        raise
+
+
+def get_ticket_details_with_users(db: Session, ticket_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Get a ticket by its ID with related user information.
+    
+    Args:
+        db: Database session
+        ticket_id: Ticket ID
+        
+    Returns:
+        Dictionary with ticket data and related user information, None if not found
+    """
+    try:
+        # Import here to avoid circular imports
+        from app.models.user import User
+        
+        # Get the ticket first
+        ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+        
+        if not ticket:
+            return None
+        
+        # Get creator user information
+        creator_user = None
+        if ticket.creator_id is not None:
+            creator_user = db.query(User).filter(User.discord_id == ticket.creator_id).first()
+        
+        # Get assigned staff user information
+        assigned_user = None
+        if ticket.assigned_to is not None:
+            assigned_user = db.query(User).filter(User.discord_id == ticket.assigned_to).first()
+        
+        # Build response dictionary
+        ticket_data = {
+            'id': ticket.id,
+            'channel_id': ticket.channel_id,
+            'guild_id': ticket.guild_id,
+            'creator_id': ticket.creator_id,
+            'assigned_to': ticket.assigned_to,
+            'status': ticket.status,
+            'category': ticket.category,
+            'reason': ticket.reason,
+            'created_at': ticket.created_at,
+            'updated_at': ticket.updated_at,
+            'closed_at': ticket.closed_at,
+            'close_reason': ticket.close_reason,
+            'is_shadow_closed': ticket.is_shadow_closed,
+            'creator': None,
+            'assigned_staff': None,
+            'participants_count': 1,  # At minimum the creator
+            'recent_messages_count': 0  # TODO: Implement when messages table exists
+        }
+        
+        # Add creator information if found
+        if creator_user:
+            ticket_data['creator'] = {
+                'id': str(creator_user.id),
+                'discord_id': creator_user.discord_id,
+                'email': creator_user.email,
+                'role': creator_user.role
+            }
+        
+        # Add assigned staff information if found
+        if assigned_user:
+            ticket_data['assigned_staff'] = {
+                'id': str(assigned_user.id),
+                'discord_id': assigned_user.discord_id,
+                'email': assigned_user.email,
+                'role': assigned_user.role
+            }
+        
+        return ticket_data
+        
+    except SQLAlchemyError as e:
+        logger.error(f"Failed to get ticket details with users: {e}")
         raise

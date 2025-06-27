@@ -18,12 +18,12 @@ import logging
 
 from .auth import generate_token, JWTError
 from .database import get_db_session
-from .models.user import User, create_user, get_user_by_discord_id, update_user
+from .models.user import User, create_user, get_user_by_discord_id, update_user, get_user_by_id, get_user_by_id
 from .models.ticket import (
-    Ticket, create_ticket, has_open_ticket_in_guild, get_ticket_by_id
+    Ticket, create_ticket, has_open_ticket_in_guild, get_ticket_by_id, get_ticket_details_with_users
 )
 from .schemas import (
-    TicketCreateRequest, TicketCreateResponse, TicketResponse, ErrorResponse
+    TicketCreateRequest, TicketCreateResponse, TicketResponse, ErrorResponse, TicketDetailResponse
 )
 from .cache import init_redis
 from .middleware import get_current_user, require_authentication
@@ -337,6 +337,109 @@ async def auth_health_check(user_info=Depends(get_current_user)):
         return {"status": "authenticated", "user_id": user_info["user_id"]}
     else:
         return {"status": "not_authenticated"}
+
+
+@app.get("/api/tickets/{ticket_id}", response_model=TicketDetailResponse)
+async def get_ticket_details(
+    ticket_id: int,
+    user_info=Depends(require_authentication()),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Get detailed information about a specific ticket.
+    
+    This endpoint returns comprehensive ticket information including:
+    - Basic ticket fields (id, status, reason, timestamps, etc.)
+    - Creator user information (discord_id, role, email)
+    - Assigned staff information (if ticket is assigned)
+    - Participant count and message statistics
+    
+    **Access Control:**
+    - Ticket creators can view their own tickets
+    - Assigned staff can view tickets assigned to them
+    - Users with MANAGE_TICKETS permission can view any ticket
+    - Users with ADMIN_SETTINGS permission can view any ticket
+    
+    **Parameters:**
+    - ticket_id: Integer ID of the ticket to retrieve (must be > 0)
+    
+    **Returns:**
+    - 200: Ticket details with related user information
+    - 400: Invalid ticket ID format
+    - 401: Authentication required
+    - 403: Insufficient permissions to view ticket
+    - 404: Ticket not found
+    - 500: Server error (database or unexpected error)
+    
+    **Response Format:**
+    The response includes all ticket fields plus enhanced information:
+    - creator: User object with creator details
+    - assigned_staff: User object with assigned staff details (if assigned)
+    - participants_count: Number of users with access to the ticket
+    - recent_messages_count: Count of recent messages in the ticket
+    """
+    try:
+        # Validate ticket_id parameter format
+        if ticket_id <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid ticket ID format"
+            )
+        
+        # Query database for ticket by ID with all related data
+        ticket_data = get_ticket_details_with_users(db, ticket_id)
+        
+        if not ticket_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Ticket not found"
+            )
+        
+        # Check user permissions to view requested ticket
+        user = user_info["user"]
+        discord_id = user_info["discord_id"]
+        
+        # Allow ticket creator to view their own ticket
+        can_view = (ticket_data["creator_id"] == discord_id)
+        
+        # Allow assigned staff to view their assigned tickets
+        if ticket_data["assigned_to"] is not None and ticket_data["assigned_to"] == discord_id:
+            can_view = True
+        
+        # Allow staff to view tickets they can manage
+        if has_permission(user.role, Permission.MANAGE_TICKETS):
+            can_view = True
+        
+        # Admins can view any ticket
+        if has_permission(user.role, Permission.ADMIN_SETTINGS):
+            can_view = True
+        
+        if not can_view:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions to view this ticket"
+            )
+        
+        # Return the enhanced ticket response
+        return TicketDetailResponse(**ticket_data)
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except SQLAlchemyError as e:
+        # Handle database errors
+        logger.error(f"Database error retrieving ticket {ticket_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve ticket due to database error"
+        )
+    except Exception as e:
+        # Handle unexpected errors
+        logger.error(f"Unexpected error retrieving ticket {ticket_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred"
+        )
 
 
 if __name__ == "__main__":
