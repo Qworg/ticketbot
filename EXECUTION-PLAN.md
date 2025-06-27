@@ -17,21 +17,21 @@
 - [x] Document user table schema and relationships
 
 ### Story E1-002: JWT Token Generation
-- [ ] Install PyJWT library and configure dependencies
-- [ ] Create JWT configuration with secret key from environment variables
-- [ ] Implement generateToken function that accepts user data dictionary
-- [ ] Add JWT token expiration set to 24 hours from creation
-- [ ] Include user_id claim in JWT payload
-- [ ] Include role claim in JWT payload for authorization
-- [ ] Include discord_id claim in JWT payload
-- [ ] Add token issued_at and expires_at timestamps
-- [ ] Implement token validation function for signature verification
-- [ ] Create helper function to extract claims from valid tokens
-- [ ] Add error handling for malformed or tampered tokens
-- [ ] Write unit tests for token generation with valid user data
-- [ ] Write unit tests for token validation with expired tokens
-- [ ] Write unit tests for token validation with invalid signatures
-- [ ] Document JWT implementation and security considerations
+- [x] Install PyJWT library and configure dependencies
+- [x] Create JWT configuration with secret key from environment variables
+- [x] Implement generateToken function that accepts user data dictionary
+- [x] Add JWT token expiration set to 24 hours from creation
+- [x] Include user_id claim in JWT payload
+- [x] Include role claim in JWT payload for authorization
+- [x] Include discord_id claim in JWT payload
+- [x] Add token issued_at and expires_at timestamps
+- [x] Implement token validation function for signature verification
+- [x] Create helper function to extract claims from valid tokens
+- [x] Add error handling for malformed or tampered tokens
+- [x] Write unit tests for token generation with valid user data
+- [x] Write unit tests for token validation with expired tokens
+- [x] Write unit tests for token validation with invalid signatures
+- [x] Document JWT implementation and security considerations
 
 ### Story E1-003: Discord OAuth2 Integration
 - [ ] Register Discord application and obtain client credentials
