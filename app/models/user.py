@@ -8,7 +8,7 @@ from typing import Optional
 from sqlalchemy import Column, String, DateTime, BigInteger, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, relationship
 from app.database import Base
 
 
@@ -41,6 +41,9 @@ class User(Base):
     # Timestamps - automatic creation and update tracking
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    
+    # Relationships
+    role_assignments = relationship("RoleAssignment", foreign_keys="RoleAssignment.user_id", back_populates="user")
 
     # Additional indexes for performance
     __table_args__ = (

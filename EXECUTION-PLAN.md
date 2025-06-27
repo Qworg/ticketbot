@@ -52,22 +52,22 @@
 - [x] Document OAuth2 setup and configuration steps
 
 ### Story E1-004: Role-Based Permissions Model
-- [ ] Define role constants: ADMIN, STAFF, USER
-- [ ] Create permissions mapping dictionary for each role
-- [ ] Implement permission checker function that takes role and permission
-- [ ] Add permissions: CREATE_TICKET, MANAGE_TICKETS, VIEW_ANALYTICS, ADMIN_SETTINGS
-- [ ] Create database table for storing role assignments
-- [ ] Implement function to get user permissions from database
-- [ ] Add Redis caching for user permissions to improve performance
-- [ ] Set cache expiration for permissions at 1 hour
-- [ ] Create permission decorator for API endpoints
-- [ ] Implement role hierarchy (Admin > Staff > User)
-- [ ] Add function to check if user has specific permission
-- [ ] Create bulk permission checker for multiple permissions
-- [ ] Write unit tests for permission checking with different roles
-- [ ] Write unit tests for permission caching and cache invalidation
-- [ ] Write unit tests for role hierarchy enforcement
-- [ ] Document permission system and how to add new permissions
+- [x] Define role constants: ADMIN, STAFF, USER
+- [x] Create permissions mapping dictionary for each role
+- [x] Implement permission checker function that takes role and permission
+- [x] Add permissions: CREATE_TICKET, MANAGE_TICKETS, VIEW_ANALYTICS, ADMIN_SETTINGS
+- [x] Create database table for storing role assignments
+- [x] Implement function to get user permissions from database
+- [x] Add Redis caching for user permissions to improve performance
+- [x] Set cache expiration for permissions at 1 hour
+- [x] Create permission decorator for API endpoints
+- [x] Implement role hierarchy (Admin > Staff > User)
+- [x] Add function to check if user has specific permission
+- [x] Create bulk permission checker for multiple permissions
+- [x] Write unit tests for permission checking with different roles
+- [x] Write unit tests for permission caching and cache invalidation
+- [x] Write unit tests for role hierarchy enforcement
+- [x] Document permission system and how to add new permissions
 
 ### Story E1-005: API Authentication Middleware
 - [ ] Create FastAPI dependency for JWT token extraction
