@@ -34,22 +34,22 @@
 - [x] Document JWT implementation and security considerations
 
 ### Story E1-003: Discord OAuth2 Integration
-- [ ] Register Discord application and obtain client credentials
-- [ ] Install Discord OAuth2 library (authlib or equivalent)
-- [ ] Configure OAuth2 client with Discord endpoints
-- [ ] Create /auth/discord/login endpoint that redirects to Discord
-- [ ] Implement Discord OAuth2 callback handler
-- [ ] Extract user profile data from Discord OAuth2 response
-- [ ] Store or update user data in database after successful auth
-- [ ] Generate JWT token for authenticated user
-- [ ] Set secure HTTP-only cookie with JWT token
-- [ ] Redirect user to dashboard after successful authentication
-- [ ] Handle OAuth2 errors and show appropriate error messages
-- [ ] Implement state parameter for CSRF protection
-- [ ] Add scope request for user identification and guild access
-- [ ] Write integration tests for complete OAuth2 flow
-- [ ] Test error scenarios like denied permissions
-- [ ] Document OAuth2 setup and configuration steps
+- [x] Register Discord application and obtain client credentials
+- [x] Install Discord OAuth2 library (authlib or equivalent)
+- [x] Configure OAuth2 client with Discord endpoints
+- [x] Create /auth/discord/login endpoint that redirects to Discord
+- [x] Implement Discord OAuth2 callback handler
+- [x] Extract user profile data from Discord OAuth2 response
+- [x] Store or update user data in database after successful auth
+- [x] Generate JWT token for authenticated user
+- [x] Set secure HTTP-only cookie with JWT token
+- [x] Redirect user to dashboard after successful authentication
+- [x] Handle OAuth2 errors and show appropriate error messages
+- [x] Implement state parameter for CSRF protection
+- [x] Add scope request for user identification and guild access
+- [x] Write integration tests for complete OAuth2 flow
+- [x] Test error scenarios like denied permissions
+- [x] Document OAuth2 setup and configuration steps
 
 ### Story E1-004: Role-Based Permissions Model
 - [ ] Define role constants: ADMIN, STAFF, USER

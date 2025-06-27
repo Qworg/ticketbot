@@ -51,6 +51,17 @@ def get_db():
         db.close()
 
 
+def get_db_session():
+    """
+    Get database session for direct use (not dependency injection).
+    Used for OAuth2 callback and other non-FastAPI contexts.
+    
+    Returns:
+        SQLAlchemy session
+    """
+    return SessionLocal()
+
+
 def init_db():
     """
     Initialize database tables.

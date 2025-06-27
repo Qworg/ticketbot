@@ -4,9 +4,11 @@ Represents Discord users in the system with authentication and role management.
 """
 import uuid
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import Column, String, DateTime, BigInteger, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
+from sqlalchemy.orm import Session
 from app.database import Base
 
 
@@ -75,8 +77,8 @@ class User(Base):
             "discord_id": str(self.discord_id),
             "email": self.email,
             "role": self.role,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at is not None else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at is not None else None,
         }
 
     @classmethod
@@ -97,3 +99,133 @@ class User(Base):
             email=email,
             role=role.upper()
         )
+
+
+# CRUD Functions for User Management
+
+def create_user(db: Session, discord_id: int, email: Optional[str] = None, 
+                username: Optional[str] = None, avatar: Optional[str] = None, 
+                role: str = "USER") -> User:
+    """
+    Create a new user in the database.
+    
+    Args:
+        db: Database session
+        discord_id: Discord user ID (snowflake)
+        email: Optional email address
+        username: Optional Discord username
+        avatar: Optional Discord avatar hash
+        role: User role, defaults to "USER"
+        
+    Returns:
+        Created User instance
+    """
+    user = User(
+        discord_id=discord_id,
+        email=email,
+        role=role.upper()
+    )
+    
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def get_user_by_discord_id(db: Session, discord_id: int) -> Optional[User]:
+    """
+    Get user by Discord ID.
+    
+    Args:
+        db: Database session
+        discord_id: Discord user ID (snowflake)
+        
+    Returns:
+        User instance if found, None otherwise
+    """
+    return db.query(User).filter(User.discord_id == discord_id).first()
+
+
+def get_user_by_id(db: Session, user_id: uuid.UUID) -> Optional[User]:
+    """
+    Get user by UUID.
+    
+    Args:
+        db: Database session
+        user_id: User UUID
+        
+    Returns:
+        User instance if found, None otherwise
+    """
+    return db.query(User).filter(User.id == user_id).first()
+
+
+def update_user(db: Session, user_id, **kwargs) -> Optional[User]:
+    """
+    Update user information.
+    
+    Args:
+        db: Database session
+        user_id: User UUID
+        **kwargs: Fields to update
+        
+    Returns:
+        Updated User instance if found, None otherwise
+    """
+    user = get_user_by_id(db, user_id)
+    if user:
+        for key, value in kwargs.items():
+            if hasattr(user, key) and value is not None:
+                setattr(user, key, value)
+        
+        db.commit()
+        db.refresh(user)
+    return user
+
+
+def get_user_by_email(db: Session, email: str) -> Optional[User]:
+    """
+    Get user by email address.
+    
+    Args:
+        db: Database session
+        email: User email address
+        
+    Returns:
+        User instance if found, None otherwise
+    """
+    return db.query(User).filter(User.email == email).first()
+
+
+def list_users(db: Session, skip: int = 0, limit: int = 100) -> list[User]:
+    """
+    List users with pagination.
+    
+    Args:
+        db: Database session
+        skip: Number of records to skip
+        limit: Maximum number of records to return
+        
+    Returns:
+        List of User instances
+    """
+    return db.query(User).offset(skip).limit(limit).all()
+
+
+def delete_user(db: Session, user_id: uuid.UUID) -> bool:
+    """
+    Delete user by ID.
+    
+    Args:
+        db: Database session
+        user_id: User UUID
+        
+    Returns:
+        True if user was deleted, False if not found
+    """
+    user = get_user_by_id(db, user_id)
+    if user:
+        db.delete(user)
+        db.commit()
+        return True
+    return False
