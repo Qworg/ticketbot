@@ -3,12 +3,15 @@ Ticket model for the ticketbot application.
 Represents support tickets created by users in Discord guilds.
 """
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any, List
 from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, Boolean, ForeignKey, Index
 from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Session
+from sqlalchemy.exc import SQLAlchemyError
 from app.database import Base
+import logging
 
+logger = logging.getLogger(__name__)
 
 class Ticket(Base):
     """
@@ -34,8 +37,8 @@ class Ticket(Base):
     # Primary key - SERIAL for auto-incrementing integer
     id = Column(Integer, primary_key=True, autoincrement=True, index=True)
     
-    # Discord channel ID - required, unique for channel reference
-    channel_id = Column(BigInteger, unique=True, nullable=False, index=True)
+    # Discord channel ID - optional, unique for channel reference
+    channel_id = Column(BigInteger, unique=True, nullable=True, index=True)
     
     # Discord guild ID - required, will reference guilds table
     guild_id = Column(BigInteger, nullable=False, index=True)
@@ -135,3 +138,143 @@ class Ticket(Base):
             'close_reason': self.close_reason,
             'is_shadow_closed': self.is_shadow_closed,
         }
+
+
+# Database functions for ticket operations
+
+def create_ticket(
+    db: Session,
+    guild_id: int,
+    creator_id: int,
+    reason: str,
+    channel_id: Optional[int] = None,
+    category: Optional[str] = None
+) -> Ticket:
+    """
+    Create a new ticket in the database.
+    
+    Args:
+        db: Database session
+        guild_id: Discord guild ID where ticket is created
+        creator_id: Discord user ID who created the ticket
+        reason: Ticket description/reason
+        channel_id: Optional Discord channel ID for the ticket
+        category: Optional category for the ticket
+        
+    Returns:
+        Created Ticket object
+        
+    Raises:
+        SQLAlchemyError: If database operation fails
+    """
+    try:
+        ticket = Ticket(
+            guild_id=guild_id,
+            creator_id=creator_id,
+            reason=reason,
+            channel_id=channel_id,
+            category=category,
+            status='open'
+        )
+        
+        db.add(ticket)
+        db.commit()
+        db.refresh(ticket)
+        
+        logger.info(f"Created ticket {ticket.id} for user {creator_id} in guild {guild_id}")
+        return ticket
+        
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Failed to create ticket: {e}")
+        raise
+
+
+def get_user_open_tickets_in_guild(db: Session, user_id: int, guild_id: int) -> List[Ticket]:
+    """
+    Get all open tickets for a user in a specific guild.
+    
+    Args:
+        db: Database session
+        user_id: Discord user ID
+        guild_id: Discord guild ID
+        
+    Returns:
+        List of open tickets for the user in the guild
+    """
+    try:
+        tickets = db.query(Ticket).filter(
+            Ticket.creator_id == user_id,
+            Ticket.guild_id == guild_id,
+            Ticket.status.in_(['open', 'in_progress'])
+        ).all()
+        
+        return tickets
+        
+    except SQLAlchemyError as e:
+        logger.error(f"Failed to query user tickets: {e}")
+        raise
+
+
+def has_open_ticket_in_guild(db: Session, user_id: int, guild_id: int) -> bool:
+    """
+    Check if a user already has an open ticket in a guild.
+    
+    Args:
+        db: Database session
+        user_id: Discord user ID
+        guild_id: Discord guild ID
+        
+    Returns:
+        True if user has an open ticket in the guild, False otherwise
+    """
+    try:
+        count = db.query(Ticket).filter(
+            Ticket.creator_id == user_id,
+            Ticket.guild_id == guild_id,
+            Ticket.status.in_(['open', 'in_progress'])
+        ).count()
+        
+        return count > 0
+        
+    except SQLAlchemyError as e:
+        logger.error(f"Failed to check for existing tickets: {e}")
+        raise
+
+
+def get_ticket_by_id(db: Session, ticket_id: int) -> Optional[Ticket]:
+    """
+    Get a ticket by its ID.
+    
+    Args:
+        db: Database session
+        ticket_id: Ticket ID
+        
+    Returns:
+        Ticket object if found, None otherwise
+    """
+    try:
+        return db.query(Ticket).filter(Ticket.id == ticket_id).first()
+        
+    except SQLAlchemyError as e:
+        logger.error(f"Failed to get ticket by ID: {e}")
+        raise
+
+
+def get_ticket_by_channel_id(db: Session, channel_id: int) -> Optional[Ticket]:
+    """
+    Get a ticket by its Discord channel ID.
+    
+    Args:
+        db: Database session
+        channel_id: Discord channel ID
+        
+    Returns:
+        Ticket object if found, None otherwise
+    """
+    try:
+        return db.query(Ticket).filter(Ticket.channel_id == channel_id).first()
+        
+    except SQLAlchemyError as e:
+        logger.error(f"Failed to get ticket by channel ID: {e}")
+        raise

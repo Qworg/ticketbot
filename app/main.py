@@ -5,19 +5,31 @@ This module sets up the FastAPI application with OAuth2 authentication routes.
 """
 
 import os
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import FastAPI, HTTPException, Depends, Request, status
 from fastapi.responses import RedirectResponse
 from authlib.integrations.starlette_client import OAuth
 from starlette.config import Config
 from starlette.middleware.sessions import SessionMiddleware
 import secrets
 from typing import Optional
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+import logging
 
 from .auth import generate_token, JWTError
 from .database import get_db_session
 from .models.user import User, create_user, get_user_by_discord_id, update_user
+from .models.ticket import (
+    Ticket, create_ticket, has_open_ticket_in_guild, get_ticket_by_id
+)
+from .schemas import (
+    TicketCreateRequest, TicketCreateResponse, TicketResponse, ErrorResponse
+)
 from .cache import init_redis
 from .middleware import get_current_user, require_authentication
+from .permissions import has_permission, Permission
+
+logger = logging.getLogger(__name__)
 
 # FastAPI app initialization
 app = FastAPI(
@@ -209,6 +221,97 @@ async def dashboard():
     This will be expanded with the actual dashboard implementation.
     """
     return {"message": "Dashboard - Authentication successful!"}
+
+
+# Ticket API Endpoints
+
+@app.post("/api/tickets", response_model=TicketCreateResponse, status_code=status.HTTP_201_CREATED)
+async def create_ticket_endpoint(
+    ticket_request: TicketCreateRequest,
+    user_info=Depends(require_authentication()),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Create a new ticket.
+    
+    This endpoint creates a new support ticket for the authenticated user.
+    Users can only create one open ticket per guild at a time.
+    """
+    try:
+        # Check user permissions
+        user = user_info["user"]
+        if not has_permission(user.role, Permission.CREATE_TICKET):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions to create tickets"
+            )
+        
+        # Validate that creator_id matches authenticated user (security check)
+        if ticket_request.creator_id != user_info["discord_id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot create ticket for another user"
+            )
+        
+        # Check if user already has an open ticket in this guild
+        if has_open_ticket_in_guild(db, ticket_request.creator_id, ticket_request.guild_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="User already has an open ticket in this guild"
+            )
+        
+        # Create the ticket
+        ticket = create_ticket(
+            db=db,
+            guild_id=ticket_request.guild_id,
+            creator_id=ticket_request.creator_id,
+            reason=ticket_request.reason,
+            channel_id=ticket_request.channel_id,
+            category=ticket_request.category
+        )
+        
+        # Log ticket creation for audit trail
+        logger.info(f"Ticket {ticket.id} created by user {ticket_request.creator_id} in guild {ticket_request.guild_id}")
+        
+        # Create response
+        ticket_response = TicketResponse.from_orm(ticket)
+        return TicketCreateResponse(
+            message=f"Ticket {ticket.id} created successfully",
+            ticket=ticket_response
+        )
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except IntegrityError as e:
+        # Handle database constraint violations
+        db.rollback()
+        if "channel_id" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A ticket with this channel ID already exists"
+            )
+        else:
+            logger.error(f"Database integrity error creating ticket: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Database constraint violation"
+            )
+    except SQLAlchemyError as e:
+        # Handle other database errors
+        db.rollback()
+        logger.error(f"Database error creating ticket: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create ticket due to database error"
+        )
+    except Exception as e:
+        # Handle unexpected errors
+        logger.error(f"Unexpected error creating ticket: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred"
+        )
 
 
 @app.get("/api/user/profile")

@@ -117,25 +117,25 @@
 - [x] Document ticket table schema and relationships
 
 ### Story E2-002: Create Ticket API Endpoint
-- [ ] Create POST /api/tickets endpoint definition
-- [ ] Define Pydantic model for ticket creation request
-- [ ] Add validation for required fields: guild_id, creator_id, reason
-- [ ] Add validation for reason length (minimum 5, maximum 500 characters)
-- [ ] Add validation for guild_id format (must be valid snowflake)
-- [ ] Check if user already has open ticket in same guild
-- [ ] Create new ticket record in database with provided data
-- [ ] Set initial ticket status to 'open'
-- [ ] Set created_at to current timestamp
-- [ ] Generate unique ticket ID and return in response
-- [ ] Return complete ticket object in API response
-- [ ] Add error handling for database constraints violations
-- [ ] Add error handling for duplicate ticket creation
-- [ ] Log ticket creation events for audit trail
-- [ ] Write unit tests for successful ticket creation
-- [ ] Write unit tests for validation errors
-- [ ] Write unit tests for duplicate ticket prevention
-- [ ] Write integration tests with authentication middleware
-- [ ] Document API endpoint parameters and responses
+- [x] Create POST /api/tickets endpoint definition
+- [x] Define Pydantic model for ticket creation request
+- [x] Add validation for required fields: guild_id, creator_id, reason
+- [x] Add validation for reason length (minimum 5, maximum 500 characters)
+- [x] Add validation for guild_id format (must be valid snowflake)
+- [x] Check if user already has open ticket in same guild
+- [x] Create new ticket record in database with provided data
+- [x] Set initial ticket status to 'open'
+- [x] Set created_at to current timestamp
+- [x] Generate unique ticket ID and return in response
+- [x] Return complete ticket object in API response
+- [x] Add error handling for database constraints violations
+- [x] Add error handling for duplicate ticket creation
+- [x] Log ticket creation events for audit trail
+- [x] Write unit tests for successful ticket creation
+- [x] Write unit tests for validation errors
+- [x] Write unit tests for duplicate ticket prevention
+- [x] Write integration tests with authentication middleware
+- [x] Document API endpoint parameters and responses
 
 ### Story E2-003: Ticket Status State Machine
 - [ ] Define ticket status constants: OPEN, IN_PROGRESS, RESOLVED, CLOSED
