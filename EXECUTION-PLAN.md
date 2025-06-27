@@ -92,29 +92,29 @@
 ## Epic 2: Ticket Lifecycle Management (E2)
 
 ### Story E2-001: Ticket Database Model
-- [ ] Create tickets table with all required columns
-- [ ] Add id column as SERIAL PRIMARY KEY
-- [ ] Add channel_id column as BIGINT UNIQUE for Discord channel reference
-- [ ] Add guild_id column as BIGINT with foreign key to guilds table
-- [ ] Add creator_id column as BIGINT for user who created ticket
-- [ ] Add assigned_to column as BIGINT nullable for staff assignment
-- [ ] Add status column as VARCHAR with default 'open'
-- [ ] Add category column as VARCHAR for ticket categorization
-- [ ] Add reason column as TEXT for ticket description
-- [ ] Add created_at column as TIMESTAMP with current timestamp default
-- [ ] Add updated_at column as TIMESTAMP with current timestamp default
-- [ ] Add closed_at column as TIMESTAMP nullable
-- [ ] Add close_reason column as TEXT nullable
-- [ ] Add is_shadow_closed column as BOOLEAN with default false
-- [ ] Create foreign key constraint from guild_id to guilds table
-- [ ] Create index on (guild_id, status) for efficient filtering
-- [ ] Create index on assigned_to for staff ticket queries
-- [ ] Create index on creator_id for user ticket lookups
-- [ ] Write database migration script for tickets table
-- [ ] Write rollback migration for tickets table
-- [ ] Create database triggers for updated_at timestamp
-- [ ] Write unit tests for ticket model validation
-- [ ] Document ticket table schema and relationships
+- [x] Create tickets table with all required columns
+- [x] Add id column as SERIAL PRIMARY KEY
+- [x] Add channel_id column as BIGINT UNIQUE for Discord channel reference
+- [x] Add guild_id column as BIGINT with foreign key to guilds table
+- [x] Add creator_id column as BIGINT for user who created ticket
+- [x] Add assigned_to column as BIGINT nullable for staff assignment
+- [x] Add status column as VARCHAR with default 'open'
+- [x] Add category column as VARCHAR for ticket categorization
+- [x] Add reason column as TEXT for ticket description
+- [x] Add created_at column as TIMESTAMP with current timestamp default
+- [x] Add updated_at column as TIMESTAMP with current timestamp default
+- [x] Add closed_at column as TIMESTAMP nullable
+- [x] Add close_reason column as TEXT nullable
+- [x] Add is_shadow_closed column as BOOLEAN with default false
+- [x] Create foreign key constraint from guild_id to guilds table
+- [x] Create index on (guild_id, status) for efficient filtering
+- [x] Create index on assigned_to for staff ticket queries
+- [x] Create index on creator_id for user ticket lookups
+- [x] Write database migration script for tickets table
+- [x] Write rollback migration for tickets table
+- [x] Create database triggers for updated_at timestamp
+- [x] Write unit tests for ticket model validation
+- [x] Document ticket table schema and relationships
 
 ### Story E2-002: Create Ticket API Endpoint
 - [ ] Create POST /api/tickets endpoint definition
