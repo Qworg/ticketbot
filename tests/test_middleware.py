@@ -5,9 +5,13 @@ Tests JWT token extraction, validation, and user authentication flow.
 
 import pytest
 import uuid
+import os
 from unittest.mock import Mock, patch, MagicMock
 from fastapi import HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials
+
+# Set JWT secret for testing
+os.environ['JWT_SECRET_KEY'] = 'test-secret-key-for-testing-only'
 
 from app.middleware import (
     get_current_user, 

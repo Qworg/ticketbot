@@ -330,69 +330,61 @@ class TestPermissionDecorators:
         return user
     
     @pytest.fixture
-    def mock_token_data(self, mock_user):
-        """Mock token data."""
-        token_data = Mock()
-        token_data.user_id = str(mock_user.id)
-        return token_data
+    def mock_user_info(self, mock_user):
+        """Mock user info dict from middleware."""
+        return {
+            "is_authenticated": True,
+            "user_id": str(mock_user.id),
+            "user": mock_user,
+            "role": "STAFF",
+            "discord_id": mock_user.discord_id
+        }
     
-    @patch('app.decorators.validate_token')
     @patch('app.decorators.get_user_permissions_cached')
-    def test_permission_dependency_success(self, mock_get_perms, mock_validate_token, mock_user, mock_token_data):
+    def test_permission_dependency_success(self, mock_get_perms, mock_user_info):
         """Test successful permission check."""
         from app.decorators import PermissionDependency
-        from fastapi.security import HTTPAuthorizationCredentials
         
-        mock_validate_token.return_value = mock_token_data
         mock_get_perms.return_value = {Permission.CREATE_TICKET, Permission.MANAGE_TICKETS}
         
         mock_db = Mock()
-        mock_db.query.return_value.filter.return_value.first.return_value = mock_user
         
         dependency = PermissionDependency(required_permissions=[Permission.CREATE_TICKET])
-        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="test_token")
         
-        result = dependency(credentials, mock_db)
+        result = dependency(mock_user_info, mock_db)
         
-        assert result["user_id"] == str(mock_user.id)
+        assert result["user_id"] == mock_user_info["user_id"]
         assert result["role"] == "STAFF"
     
-    @patch('app.decorators.validate_token')
-    def test_permission_dependency_invalid_token(self, mock_validate_token):
-        """Test permission check with invalid token."""
+    def test_permission_dependency_unauthenticated(self):
+        """Test permission check with unauthenticated user."""
         from app.decorators import PermissionDependency
-        from fastapi.security import HTTPAuthorizationCredentials
         from fastapi import HTTPException
         
-        mock_validate_token.side_effect = Exception("Invalid token")
+        unauthenticated_user = {"is_authenticated": False}
         
         dependency = PermissionDependency()
-        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="invalid_token")
         
         with pytest.raises(HTTPException) as exc_info:
-            dependency(credentials, Mock())
+            dependency(unauthenticated_user, Mock())
         
         assert exc_info.value.status_code == 401
+        assert "Authentication required" in str(exc_info.value.detail)
     
-    @patch('app.decorators.validate_token')
     @patch('app.decorators.get_user_permissions_cached')
-    def test_permission_dependency_insufficient_permissions(self, mock_get_perms, mock_validate_token, mock_user, mock_token_data):
+    def test_permission_dependency_insufficient_permissions(self, mock_get_perms, mock_user_info):
         """Test permission check with insufficient permissions."""
         from app.decorators import PermissionDependency
-        from fastapi.security import HTTPAuthorizationCredentials
         from fastapi import HTTPException
         
-        mock_validate_token.return_value = mock_token_data
         mock_get_perms.return_value = {Permission.CREATE_TICKET}  # Missing MANAGE_TICKETS
         
         mock_db = Mock()
-        mock_db.query.return_value.filter.return_value.first.return_value = mock_user
         
         dependency = PermissionDependency(required_permissions=[Permission.MANAGE_TICKETS])
-        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="test_token")
         
         with pytest.raises(HTTPException) as exc_info:
-            dependency(credentials, mock_db)
+            dependency(mock_user_info, mock_db)
         
         assert exc_info.value.status_code == 403
         assert "Missing permissions" in str(exc_info.value.detail)
