@@ -2,8 +2,9 @@
 Pydantic schemas for API request/response models.
 """
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, Field, validator
+from app.status import TicketStatus, get_valid_next_statuses, validate_status_transition
 import re
 
 
@@ -102,6 +103,66 @@ class TicketCreateResponse(BaseModel):
     success: bool = True
     message: str
     ticket: TicketResponse
+
+
+class ErrorResponse(BaseModel):
+    """
+    Error response model.
+    """
+    success: bool = False
+    error: str
+    detail: Optional[str] = None
+
+
+class TicketStatusUpdateRequest(BaseModel):
+    """
+    Pydantic model for ticket status update request.
+    """
+    new_status: str = Field(..., description="New status for the ticket")
+    close_reason: Optional[str] = Field(None, description="Reason for closing the ticket")
+
+    @validator('new_status')
+    def validate_new_status(cls, v):
+        """Validate new_status is a valid status."""
+        try:
+            # Validate it's a valid status enum value
+            TicketStatus(v.lower())
+            return v.lower()
+        except ValueError:
+            valid_statuses = [status.value for status in TicketStatus]
+            raise ValueError(f'new_status must be one of {valid_statuses}')
+
+    @validator('close_reason')
+    def validate_close_reason(cls, v, values):
+        """Validate close_reason is provided when transitioning to closed."""
+        new_status = values.get('new_status')
+        if new_status == TicketStatus.CLOSED.value and not v:
+            raise ValueError('close_reason is required when transitioning to closed status')
+        if v and len(v.strip()) < 3:
+            raise ValueError('close_reason must be at least 3 characters long')
+        if v and len(v) > 200:
+            raise ValueError('close_reason must be at most 200 characters long')
+        return v.strip() if v else None
+
+
+class TicketStatusUpdateResponse(BaseModel):
+    """
+    Response model for successful ticket status update.
+    """
+    success: bool = True
+    message: str
+    ticket: TicketResponse
+    previous_status: str
+    transition_log: dict
+
+
+class ValidNextStatusesResponse(BaseModel):
+    """
+    Response model for getting valid next statuses for a ticket.
+    """
+    current_status: str
+    valid_next_statuses: List[str]
+    status_descriptions: dict
 
 
 class ErrorResponse(BaseModel):

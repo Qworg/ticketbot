@@ -138,23 +138,23 @@
 - [x] Document API endpoint parameters and responses
 
 ### Story E2-003: Ticket Status State Machine
-- [ ] Define ticket status constants: OPEN, IN_PROGRESS, RESOLVED, CLOSED
-- [ ] Create status transition matrix defining valid state changes
-- [ ] Implement validate_status_transition function
-- [ ] Allow OPEN → IN_PROGRESS transition
-- [ ] Allow IN_PROGRESS → RESOLVED transition
-- [ ] Allow RESOLVED → CLOSED transition
-- [ ] Allow OPEN → CLOSED transition (direct close)
-- [ ] Prevent invalid transitions like CLOSED → OPEN
-- [ ] Create StatusTransitionError exception class
-- [ ] Add transition validation to ticket update logic
-- [ ] Log all status transitions with timestamps
-- [ ] Add who_changed field to track status change actor
-- [ ] Create function to get valid next statuses for current status
-- [ ] Write unit tests for all valid transitions
-- [ ] Write unit tests for invalid transition prevention
-- [ ] Write unit tests for transition logging
-- [ ] Document status state machine and valid transitions
+- [x] Define ticket status constants: OPEN, IN_PROGRESS, RESOLVED, CLOSED
+- [x] Create status transition matrix defining valid state changes
+- [x] Implement validate_status_transition function
+- [x] Allow OPEN → IN_PROGRESS transition
+- [x] Allow IN_PROGRESS → RESOLVED transition
+- [x] Allow RESOLVED → CLOSED transition
+- [x] Allow OPEN → CLOSED transition (direct close)
+- [x] Prevent invalid transitions like CLOSED → OPEN
+- [x] Create StatusTransitionError exception class
+- [x] Add transition validation to ticket update logic
+- [x] Log all status transitions with timestamps
+- [x] Add who_changed field to track status change actor
+- [x] Create function to get valid next statuses for current status
+- [x] Write unit tests for all valid transitions
+- [x] Write unit tests for invalid transition prevention
+- [x] Write unit tests for transition logging
+- [x] Document status state machine and valid transitions
 
 ### Story E2-004: Get Ticket Details Endpoint
 - [ ] Create GET /api/tickets/{ticket_id} endpoint

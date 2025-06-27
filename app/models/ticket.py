@@ -9,6 +9,11 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship, Session
 from sqlalchemy.exc import SQLAlchemyError
 from app.database import Base
+from app.status import (
+    TicketStatus, validate_status_transition, enforce_status_transition, 
+    log_status_transition, StatusTransitionError, is_open_status, 
+    is_closed_status, can_be_assigned, requires_close_reason
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -99,15 +104,82 @@ class Ticket(Base):
 
     def is_open(self) -> bool:
         """Check if ticket is in an open state."""
-        return str(self.status) in ['open', 'in_progress']
+        return is_open_status(str(self.status))
 
     def is_closed(self) -> bool:
         """Check if ticket is closed."""
-        return str(self.status) == 'closed'
+        return is_closed_status(str(self.status))
 
     def can_be_assigned(self) -> bool:
         """Check if ticket can be assigned to staff."""
-        return str(self.status) in ['open', 'in_progress'] and not self.is_closed()
+        return can_be_assigned(str(self.status))
+
+    def validate_status_transition(self, new_status: str) -> bool:
+        """Validate if transition to new status is allowed."""
+        return validate_status_transition(str(self.status), new_status)
+
+    def update_status(
+        self, 
+        new_status: str, 
+        changed_by: int,
+        close_reason: Optional[str] = None,
+        db_session: Optional[Session] = None
+    ) -> bool:
+        """
+        Update ticket status with validation and audit logging.
+        
+        Args:
+            new_status: New status to transition to
+            changed_by: User ID who is making the change
+            close_reason: Reason for closure if transitioning to closed
+            db_session: Database session for persistence
+            
+        Returns:
+            True if status was updated successfully
+            
+        Raises:
+            StatusTransitionError: If transition is invalid
+            ValueError: If close_reason is required but not provided
+        """
+        # Validate the transition
+        previous_status = str(self.status)
+        validated_status = enforce_status_transition(previous_status, new_status)
+        
+        # Check if close reason is required
+        if requires_close_reason(previous_status, validated_status) and not close_reason:
+            raise ValueError("Close reason is required when transitioning to closed status")
+        
+        # Update the status
+        self.status = validated_status
+        
+        # Set closed_at timestamp if transitioning to closed
+        if validated_status == TicketStatus.CLOSED:
+            self.closed_at = datetime.utcnow()
+            if close_reason:
+                self.close_reason = close_reason
+        
+        # Log the transition
+        ticket_id = getattr(self, 'id', 0)
+        transition_log = log_status_transition(
+            ticket_id=ticket_id,
+            previous_status=previous_status,
+            new_status=validated_status,
+            changed_by=changed_by,
+            reason=close_reason
+        )
+        
+        # Persist to database if session provided
+        if db_session:
+            try:
+                db_session.add(self)
+                db_session.commit()
+                logger.info(f"Updated ticket {self.id} status from {previous_status} to {validated_status}")
+            except SQLAlchemyError as e:
+                db_session.rollback()
+                logger.error(f"Failed to update ticket status: {e}")
+                raise
+        
+        return True
 
     def to_dict(self) -> dict:
         """Convert ticket to dictionary representation."""
@@ -174,7 +246,7 @@ def create_ticket(
             reason=reason,
             channel_id=channel_id,
             category=category,
-            status='open'
+            status=TicketStatus.OPEN.value
         )
         
         db.add(ticket)
@@ -206,7 +278,7 @@ def get_user_open_tickets_in_guild(db: Session, user_id: int, guild_id: int) -> 
         tickets = db.query(Ticket).filter(
             Ticket.creator_id == user_id,
             Ticket.guild_id == guild_id,
-            Ticket.status.in_(['open', 'in_progress'])
+            Ticket.status.in_([TicketStatus.OPEN.value, TicketStatus.IN_PROGRESS.value])
         ).all()
         
         return tickets
@@ -232,7 +304,7 @@ def has_open_ticket_in_guild(db: Session, user_id: int, guild_id: int) -> bool:
         count = db.query(Ticket).filter(
             Ticket.creator_id == user_id,
             Ticket.guild_id == guild_id,
-            Ticket.status.in_(['open', 'in_progress'])
+            Ticket.status.in_([TicketStatus.OPEN.value, TicketStatus.IN_PROGRESS.value])
         ).count()
         
         return count > 0
