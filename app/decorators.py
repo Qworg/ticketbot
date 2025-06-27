@@ -3,7 +3,7 @@ Permission decorators for FastAPI endpoints.
 Provides role-based access control for API endpoints.
 """
 from functools import wraps
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Dict, Any
 from fastapi import HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -13,7 +13,7 @@ import logging
 from app.database import get_db
 from app.permissions import Permission, Role, has_permission, check_role_hierarchy
 from app.cache import get_user_permissions_cached
-from app.auth import validate_token
+from app.middleware import get_current_user, require_authentication
 
 logger = logging.getLogger(__name__)
 
@@ -45,14 +45,14 @@ class PermissionDependency:
     
     def __call__(
         self,
-        credentials: HTTPAuthorizationCredentials = Depends(security),
+        user_info: Dict[str, Any] = Depends(get_current_user),
         db: Session = Depends(get_db)
     ):
         """
         Check user permissions.
         
         Args:
-            credentials: JWT token from Authorization header
+            user_info: User information from middleware
             db: Database session
             
         Returns:
@@ -61,73 +61,49 @@ class PermissionDependency:
         Raises:
             HTTPException: 401 if unauthorized, 403 if forbidden
         """
-        try:
-            # Verify JWT token and get user
-            token_data = validate_token(credentials.credentials)
-            user_id = token_data.user_id
-            
-            if not user_id:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid token: missing user_id"
-                )
-            
-            # Get user from database to verify existence
-            from app.models.user import User
-            user = db.query(User).filter(User.id == uuid.UUID(user_id)).first()
-            if not user:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="User not found"
-                )
-            
-            # Check role hierarchy if required
-            if self.required_role:
-                if not check_role_hierarchy(str(user.role), self.required_role.value):
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail=f"Insufficient role. Required: {self.required_role.value}"
-                    )
-            
-            # Check permissions if required
-            if self.required_permissions:
-                # Determine guild context
-                guild_id = None
-                if self.guild_id_param:
-                    # TODO: Extract guild_id from request context
-                    # This would need to be implemented based on FastAPI request handling
-                    pass
-                
-                # Get user permissions (with caching)
-                user_permissions = get_user_permissions_cached(db, user_id, guild_id)
-                
-                # Check if user has all required permissions
-                missing_permissions = [
-                    perm for perm in self.required_permissions 
-                    if perm not in user_permissions
-                ]
-                
-                if missing_permissions:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail=f"Missing permissions: {[p.value for p in missing_permissions]}"
-                    )
-            
-            return {
-                "user_id": user_id,
-                "user": user,
-                "role": str(user.role),
-                "discord_id": user.discord_id
-            }
-            
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Permission check failed: {e}")
+        # Ensure user is authenticated
+        if not user_info.get("is_authenticated"):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authentication failed"
+                detail="Authentication required"
             )
+        
+        user = user_info["user"]
+        user_id = user_info["user_id"]
+        
+        # Check role hierarchy if required
+        if self.required_role:
+            if not check_role_hierarchy(str(user.role), self.required_role.value):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Insufficient role. Required: {self.required_role.value}"
+                )
+        
+        # Check permissions if required
+        if self.required_permissions:
+            # Determine guild context
+            guild_id = None
+            if self.guild_id_param:
+                # TODO: Extract guild_id from request context
+                # This would need to be implemented based on FastAPI request handling
+                pass
+            
+            # Get user permissions (with caching)
+            user_permissions = get_user_permissions_cached(db, user_id, guild_id)
+            
+            # Check if user has all required permissions
+            missing_permissions = [
+                perm for perm in self.required_permissions 
+                if perm not in user_permissions
+            ]
+            
+            if missing_permissions:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Missing permissions: {[p.value for p in missing_permissions]}"
+                )
+        
+        return user_info
 
 
 def require_permissions(*permissions: Permission):

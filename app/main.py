@@ -16,6 +16,8 @@ from typing import Optional
 from .auth import generate_token, JWTError
 from .database import get_db_session
 from .models.user import User, create_user, get_user_by_discord_id, update_user
+from .cache import init_redis
+from .middleware import get_current_user, require_authentication
 
 # FastAPI app initialization
 app = FastAPI(
@@ -23,6 +25,10 @@ app = FastAPI(
     description="API for Discord Ticket Management System",
     version="0.1.0"
 )
+
+# Initialize Redis for caching and rate limiting
+redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+init_redis(redis_url)
 
 # Add session middleware for OAuth2 state management
 app.add_middleware(
@@ -203,6 +209,31 @@ async def dashboard():
     This will be expanded with the actual dashboard implementation.
     """
     return {"message": "Dashboard - Authentication successful!"}
+
+
+@app.get("/api/user/profile")
+async def get_user_profile(user_info=Depends(require_authentication())):
+    """
+    Get current user profile information.
+    Protected endpoint demonstrating middleware usage.
+    """
+    return {
+        "user_id": user_info["user_id"],
+        "role": user_info["role"],
+        "discord_id": user_info["discord_id"],
+        "email": user_info["user"].email
+    }
+
+
+@app.get("/api/health/auth")
+async def auth_health_check(user_info=Depends(get_current_user)):
+    """
+    Health check endpoint that shows authentication status.
+    """
+    if user_info.get("is_authenticated"):
+        return {"status": "authenticated", "user_id": user_info["user_id"]}
+    else:
+        return {"status": "not_authenticated"}
 
 
 if __name__ == "__main__":

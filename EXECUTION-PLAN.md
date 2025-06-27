@@ -70,24 +70,24 @@
 - [x] Document permission system and how to add new permissions
 
 ### Story E1-005: API Authentication Middleware
-- [ ] Create FastAPI dependency for JWT token extraction
-- [ ] Extract JWT token from Authorization header (Bearer scheme)
-- [ ] Validate JWT token signature using configured secret
-- [ ] Check JWT token expiration and reject expired tokens
-- [ ] Extract user claims from validated JWT token
-- [ ] Query database to verify user still exists and is active
-- [ ] Add user object to request context for downstream handlers
-- [ ] Return 401 Unauthorized for missing or invalid tokens
-- [ ] Return 403 Forbidden for insufficient permissions
-- [ ] Log authentication failures for security monitoring
-- [ ] Handle JWT decoding errors gracefully
-- [ ] Add rate limiting for failed authentication attempts
-- [ ] Create public endpoints list that bypass authentication
-- [ ] Write unit tests for middleware with valid tokens
-- [ ] Write unit tests for middleware with expired tokens
-- [ ] Write unit tests for middleware with malformed tokens
-- [ ] Write integration tests for protected endpoints
-- [ ] Document authentication middleware usage and configuration
+- [x] Create FastAPI dependency for JWT token extraction
+- [x] Extract JWT token from Authorization header (Bearer scheme)
+- [x] Validate JWT token signature using configured secret
+- [x] Check JWT token expiration and reject expired tokens
+- [x] Extract user claims from validated JWT token
+- [x] Query database to verify user still exists and is active
+- [x] Add user object to request context for downstream handlers
+- [x] Return 401 Unauthorized for missing or invalid tokens
+- [x] Return 403 Forbidden for insufficient permissions
+- [x] Log authentication failures for security monitoring
+- [x] Handle JWT decoding errors gracefully
+- [x] Add rate limiting for failed authentication attempts
+- [x] Create public endpoints list that bypass authentication
+- [x] Write unit tests for middleware with valid tokens
+- [x] Write unit tests for middleware with expired tokens
+- [x] Write unit tests for middleware with malformed tokens
+- [x] Write integration tests for protected endpoints
+- [x] Document authentication middleware usage and configuration
 
 ## Epic 2: Ticket Lifecycle Management (E2)
 
