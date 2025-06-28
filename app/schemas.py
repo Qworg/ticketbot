@@ -206,3 +206,72 @@ class TicketDetailResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class TicketUpdateRequest(BaseModel):
+    """
+    Pydantic model for ticket update request.
+    Allows updating multiple fields in a single request.
+    """
+    status: Optional[str] = Field(None, description="New status for the ticket")
+    category: Optional[str] = Field(None, max_length=100, description="New category for the ticket")
+    assigned_to: Optional[int] = Field(None, description="Discord user ID to assign ticket to (or null to unassign)")
+    close_reason: Optional[str] = Field(None, description="Reason for closing the ticket")
+
+    @validator('status')
+    def validate_status(cls, v):
+        """Validate status is a valid ticket status."""
+        if v is not None:
+            try:
+                # Validate it's a valid status enum value
+                TicketStatus(v.lower())
+                return v.lower()
+            except ValueError:
+                valid_statuses = [status.value for status in TicketStatus]
+                raise ValueError(f'status must be one of {valid_statuses}')
+        return v
+
+    @validator('category')
+    def validate_category(cls, v):
+        """Validate category if provided."""
+        if v is not None:
+            v = v.strip()
+            if not v:
+                return None
+            if len(v) > 100:
+                raise ValueError('category must be at most 100 characters long')
+        return v
+
+    @validator('assigned_to')
+    def validate_assigned_to(cls, v):
+        """Validate assigned_to is a valid Discord snowflake if provided."""
+        if v is not None:
+            if not isinstance(v, int) or v <= 0:
+                raise ValueError('assigned_to must be a positive integer')
+            # Discord snowflakes are typically 17-19 digits long
+            if len(str(v)) < 17 or len(str(v)) > 19:
+                raise ValueError('assigned_to must be a valid Discord snowflake (17-19 digits)')
+        return v
+
+    @validator('close_reason')
+    def validate_close_reason(cls, v, values):
+        """Validate close_reason is provided when transitioning to closed."""
+        status = values.get('status')
+        if status == TicketStatus.CLOSED.value and not v:
+            raise ValueError('close_reason is required when transitioning to closed status')
+        if v and len(v.strip()) < 3:
+            raise ValueError('close_reason must be at least 3 characters long')
+        if v and len(v) > 200:
+            raise ValueError('close_reason must be at most 200 characters long')
+        return v.strip() if v else None
+
+
+class TicketUpdateResponse(BaseModel):
+    """
+    Response model for successful ticket update.
+    """
+    success: bool = True
+    message: str
+    ticket: TicketResponse
+    changes_made: List[str]
+    transition_log: Optional[dict] = None

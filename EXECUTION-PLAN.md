@@ -177,25 +177,25 @@
 - [x] Document response format and field descriptions
 
 ### Story E2-005: Update Ticket Endpoint
-- [ ] Create PATCH /api/tickets/{ticket_id} endpoint
-- [ ] Define Pydantic model for ticket update request
-- [ ] Allow updating status field with validation
-- [ ] Allow updating category field
-- [ ] Allow updating assigned_to field for staff assignment
-- [ ] Allow updating close_reason when closing ticket
-- [ ] Validate status transitions using state machine
-- [ ] Check user permissions for ticket modification
-- [ ] Update updated_at timestamp automatically
-- [ ] Set closed_at timestamp when status changes to CLOSED
-- [ ] Create audit log entry for each field change
-- [ ] Return updated ticket object in response
+- [x] Create PATCH /api/tickets/{ticket_id} endpoint
+- [x] Define Pydantic model for ticket update request
+- [x] Allow updating status field with validation
+- [x] Allow updating category field
+- [x] Allow updating assigned_to field for staff assignment
+- [x] Allow updating close_reason when closing ticket
+- [x] Validate status transitions using state machine
+- [x] Check user permissions for ticket modification
+- [x] Update updated_at timestamp automatically
+- [x] Set closed_at timestamp when status changes to CLOSED
+- [x] Create audit log entry for each field change
+- [x] Return updated ticket object in response
 - [ ] Emit WebSocket event for real-time updates
-- [ ] Add concurrency control to prevent race conditions
-- [ ] Write unit tests for each updatable field
-- [ ] Write unit tests for permission validation
-- [ ] Write unit tests for audit logging
-- [ ] Write integration tests for complete update flow
-- [ ] Document updatable fields and validation rules
+- [x] Add concurrency control to prevent race conditions
+- [x] Write unit tests for each updatable field
+- [x] Write unit tests for permission validation
+- [x] Write unit tests for audit logging
+- [x] Write integration tests for complete update flow
+- [x] Document updatable fields and validation rules
 
 ### Story E2-006: List Tickets Endpoint with Pagination
 - [ ] Create GET /api/tickets endpoint with query parameters

@@ -438,3 +438,92 @@ def get_ticket_details_with_users(db: Session, ticket_id: int) -> Optional[Dict[
     except SQLAlchemyError as e:
         logger.error(f"Failed to get ticket details with users: {e}")
         raise
+
+
+def update_ticket(
+    db: Session,
+    ticket_id: int,
+    user_id: int,
+    status: Optional[str] = None,
+    category: Optional[str] = None,
+    assigned_to: Optional[int] = None,
+    close_reason: Optional[str] = None
+) -> Ticket:
+    """
+    Update a ticket with the provided fields.
+    
+    Args:
+        db: Database session
+        ticket_id: ID of the ticket to update
+        user_id: Discord user ID of the user making the update
+        status: New status (optional)
+        category: New category (optional)
+        assigned_to: New assigned user ID (optional, can be None to unassign)
+        close_reason: Reason for closing (optional, required when transitioning to closed)
+        
+    Returns:
+        Updated Ticket object
+        
+    Raises:
+        ValueError: If ticket not found or validation fails
+        StatusTransitionError: If status transition is invalid
+        SQLAlchemyError: If database operation fails
+    """
+    try:
+        # Get the ticket
+        ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+        if not ticket:
+            raise ValueError(f"Ticket with ID {ticket_id} not found")
+        
+        changes_made = []
+        
+        # Update status if provided
+        if status is not None and status != str(getattr(ticket, 'status', '')):
+            # Use the ticket's update_status method for validation and logging
+            ticket.update_status(
+                new_status=status,
+                changed_by=user_id,
+                close_reason=close_reason
+            )
+            changes_made.append(f"status: {getattr(ticket, 'status', '')} -> {status}")
+        
+        # Update category if provided
+        if category is not None and category != str(getattr(ticket, 'category', '') or ''):
+            old_category = getattr(ticket, 'category', None) or "None"
+            setattr(ticket, 'category', category)
+            changes_made.append(f"category: {old_category} -> {category or 'None'}")
+        
+        # Update assigned_to if provided (including None to unassign)
+        current_assigned = getattr(ticket, 'assigned_to', None)
+        if assigned_to != current_assigned:
+            old_assigned = current_assigned or "None"
+            setattr(ticket, 'assigned_to', assigned_to)
+            changes_made.append(f"assigned_to: {old_assigned} -> {assigned_to or 'None'}")
+            
+            # If assigning to someone and ticket is open, automatically set to in_progress
+            current_status = getattr(ticket, 'status', None)
+            if assigned_to is not None and current_status == TicketStatus.OPEN.value:
+                ticket.update_status(
+                    new_status=TicketStatus.IN_PROGRESS.value,
+                    changed_by=user_id
+                )
+                changes_made.append(f"status: {TicketStatus.OPEN.value} -> {TicketStatus.IN_PROGRESS.value} (auto-assigned)")
+        
+        # Update close_reason if provided and not already set via status update
+        if close_reason is not None and close_reason != getattr(ticket, 'close_reason', None):
+            old_reason = getattr(ticket, 'close_reason', None) or "None"
+            setattr(ticket, 'close_reason', close_reason)
+            changes_made.append(f"close_reason: {old_reason} -> {close_reason}")
+        
+        # Commit the changes
+        db.add(ticket)
+        db.commit()
+        db.refresh(ticket)
+        
+        logger.info(f"Updated ticket {ticket_id}: {', '.join(changes_made)}")
+        return ticket
+        
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Failed to update ticket {ticket_id}: {e}")
+        raise

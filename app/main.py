@@ -20,14 +20,17 @@ from .auth import generate_token, JWTError
 from .database import get_db_session
 from .models.user import User, create_user, get_user_by_discord_id, update_user, get_user_by_id, get_user_by_id
 from .models.ticket import (
-    Ticket, create_ticket, has_open_ticket_in_guild, get_ticket_by_id, get_ticket_details_with_users
+    Ticket, create_ticket, has_open_ticket_in_guild, get_ticket_by_id, get_ticket_details_with_users,
+    update_ticket
 )
 from .schemas import (
-    TicketCreateRequest, TicketCreateResponse, TicketResponse, ErrorResponse, TicketDetailResponse
+    TicketCreateRequest, TicketCreateResponse, TicketResponse, ErrorResponse, TicketDetailResponse,
+    TicketUpdateRequest, TicketUpdateResponse
 )
 from .cache import init_redis
 from .middleware import get_current_user, require_authentication
 from .permissions import has_permission, Permission
+from .status import validate_status_transition, get_valid_next_statuses
 
 logger = logging.getLogger(__name__)
 
@@ -436,6 +439,220 @@ async def get_ticket_details(
     except Exception as e:
         # Handle unexpected errors
         logger.error(f"Unexpected error retrieving ticket {ticket_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred"
+        )
+
+
+@app.patch("/api/tickets/{ticket_id}", response_model=TicketUpdateResponse)
+async def update_ticket_endpoint(
+    ticket_id: int,
+    update_request: TicketUpdateRequest,
+    user_info=Depends(require_authentication()),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Update a ticket with the provided fields.
+    
+    This endpoint allows updating ticket status, category, assignment, and close reason.
+    Updates are atomic and include proper validation and audit logging.
+    
+    **Access Control:**
+    - Ticket creators can update category and close reason of their own tickets
+    - Ticket creators can close their own tickets
+    - Staff with MANAGE_TICKETS permission can update any field of any ticket
+    - Staff can assign/unassign tickets to/from themselves
+    - Admins can update any field of any ticket
+    
+    **Status Transitions:**
+    - All status transitions are validated using the state machine
+    - Invalid transitions will return 400 Bad Request
+    - Closing a ticket requires a close_reason
+    - Assigning a ticket automatically sets status to IN_PROGRESS if currently OPEN
+    
+    **Concurrency Control:**
+    - Updates are atomic at the database level
+    - Race conditions are handled by database constraints
+    
+    **Parameters:**
+    - ticket_id: Integer ID of the ticket to update (must be > 0)
+    - update_request: JSON body with fields to update (all optional)
+    
+    **Returns:**
+    - 200: Ticket updated successfully with change summary
+    - 400: Invalid request data or status transition
+    - 401: Authentication required
+    - 403: Insufficient permissions to update ticket
+    - 404: Ticket not found
+    - 409: Conflict (e.g., concurrency issue)
+    - 500: Server error (database or unexpected error)
+    """
+    try:
+        # Validate ticket_id parameter format
+        if ticket_id <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid ticket ID format"
+            )
+        
+        # Get the ticket first to check permissions
+        ticket = get_ticket_by_id(db, ticket_id)
+        if not ticket:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Ticket not found"
+            )
+        
+        # Check user permissions for ticket modification
+        user = user_info["user"]
+        discord_id = user_info["discord_id"]
+        
+        # Determine what user can update based on permissions
+        can_update_status = False
+        can_update_assignment = False
+        can_update_category = False
+        can_update_close_reason = False
+        
+        # Ticket creators can update category and close reason, and close their own tickets
+        if getattr(ticket, 'creator_id', None) == discord_id:
+            can_update_category = True
+            can_update_close_reason = True
+            # Can close their own ticket (status change to closed only)
+            if update_request.status == "closed":
+                can_update_status = True
+        
+        # Staff with MANAGE_TICKETS permission can update any field
+        if has_permission(user.role, Permission.MANAGE_TICKETS):
+            can_update_status = True
+            can_update_assignment = True
+            can_update_category = True
+            can_update_close_reason = True
+        
+        # Admins can update any field
+        if has_permission(user.role, Permission.ADMIN_SETTINGS):
+            can_update_status = True
+            can_update_assignment = True
+            can_update_category = True
+            can_update_close_reason = True
+        
+        # Validate permission for each requested update
+        if update_request.status is not None and not can_update_status:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions to update ticket status"
+            )
+        
+        if update_request.assigned_to is not None and not can_update_assignment:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions to update ticket assignment"
+            )
+        
+        if update_request.category is not None and not can_update_category:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions to update ticket category"
+            )
+        
+        if update_request.close_reason is not None and not can_update_close_reason:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions to update close reason"
+            )
+        
+        # Validate status transition if status is being updated
+        if update_request.status is not None:
+            current_status = getattr(ticket, 'status', None)
+            if current_status is None:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Ticket has invalid current status"
+                )
+            if not validate_status_transition(str(current_status), update_request.status):
+                valid_statuses = get_valid_next_statuses(str(current_status))
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid status transition from '{current_status}' to '{update_request.status}'. Valid transitions: {valid_statuses}"
+                )
+        
+        # Check if any updates were actually requested
+        if all([
+            update_request.status is None,
+            update_request.category is None, 
+            update_request.assigned_to is None,
+            update_request.close_reason is None
+        ]):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No updates provided"
+            )
+        
+        # Perform the update
+        updated_ticket = update_ticket(
+            db=db,
+            ticket_id=ticket_id,
+            user_id=discord_id,
+            status=update_request.status,
+            category=update_request.category,
+            assigned_to=update_request.assigned_to,
+            close_reason=update_request.close_reason
+        )
+        
+        # Create response
+        ticket_response = TicketResponse.from_orm(updated_ticket)
+        
+        # Build changes summary
+        changes_made = []
+        if update_request.status is not None:
+            changes_made.append(f"status updated to '{update_request.status}'")
+        if update_request.category is not None:
+            changes_made.append(f"category updated to '{update_request.category}'")
+        if update_request.assigned_to is not None:
+            changes_made.append(f"assigned to user {update_request.assigned_to}")
+        elif hasattr(update_request, 'assigned_to') and update_request.assigned_to is None:
+            changes_made.append("unassigned ticket")
+        if update_request.close_reason is not None:
+            changes_made.append(f"close reason set")
+        
+        # Log audit entry
+        logger.info(f"Ticket {ticket_id} updated by user {discord_id}: {', '.join(changes_made)}")
+        
+        return TicketUpdateResponse(
+            message=f"Ticket {ticket_id} updated successfully",
+            ticket=ticket_response,
+            changes_made=changes_made,
+            transition_log=None  # TODO: Add transition log when audit table exists
+        )
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except ValueError as e:
+        # Handle validation errors
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except IntegrityError as e:
+        # Handle database constraint violations
+        db.rollback()
+        logger.error(f"Database integrity error updating ticket {ticket_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Update conflict - ticket may have been modified by another user"
+        )
+    except SQLAlchemyError as e:
+        # Handle other database errors
+        db.rollback()
+        logger.error(f"Database error updating ticket {ticket_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update ticket due to database error"
+        )
+    except Exception as e:
+        # Handle unexpected errors
+        logger.error(f"Unexpected error updating ticket {ticket_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred"
