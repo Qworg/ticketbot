@@ -821,6 +821,44 @@ class TestTicketListEndpoint:
         assert response.status_code == 401
 
     @patch('app.main.list_tickets_with_pagination')
+    def test_list_tickets(self, mock_list_tickets):
+        """Test basic ticket listing functionality."""
+        # Setup mocks
+        mock_user, mock_db_session = self._setup_auth_mocks()
+        
+        try:
+            # Mock return data
+            mock_list_tickets.return_value = {
+                "tickets": [],
+                "pagination": {
+                    "page": 1,
+                    "limit": 20,
+                    "total_count": 0,
+                    "total_pages": 0,
+                    "has_next": False,
+                    "has_previous": False
+                }
+            }
+            
+            token = self._create_test_jwt_token()
+            headers = {"Authorization": f"Bearer {token}"}
+            
+            # Make request with minimum required parameters
+            response = self.client.get(f"/api/tickets?guild_id={self.guild_id}", headers=headers)
+            
+            # Verify response
+            assert response.status_code == 200
+            data = response.json()
+            assert "tickets" in data
+            assert "pagination" in data
+            assert data["pagination"]["page"] == 1
+            assert data["pagination"]["limit"] == 20
+            
+        finally:
+            # Clean up dependency overrides
+            app.dependency_overrides.clear()
+
+    @patch('app.main.list_tickets_with_pagination')
     def test_successful_list_with_default_params(self, mock_list_tickets):
         """Test successful ticket listing with default parameters."""
         # Setup mocks
@@ -1044,3 +1082,24 @@ class TestTicketListEndpoint:
         finally:
             # Clean up dependency overrides
             app.dependency_overrides.clear()
+
+
+def test_list_tickets():
+    """
+    Module-level test function for ticket listing.
+    
+    This is a basic test that ensures the endpoint exists and requires authentication.
+    More comprehensive tests are in TestTicketListEndpoint class.
+    """
+    from fastapi.testclient import TestClient
+    from app.main import app
+    
+    client = TestClient(app)
+    
+    # Test that the endpoint exists and requires authentication
+    response = client.get("/api/tickets")
+    assert response.status_code == 401  # Should require authentication
+    
+    # Test with invalid parameters (missing guild_id)
+    response = client.get("/api/tickets?page=1&limit=20")
+    assert response.status_code == 401  # Should still require authentication first
