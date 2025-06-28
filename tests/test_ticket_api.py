@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch, MagicMock
 import json
 import uuid
 from datetime import datetime, timedelta
+from typing import Optional
 import jwt
 import os
 
@@ -755,3 +756,291 @@ class TestTicketDetailsEndpoint:
         response = self.client.get(f"/api/tickets/{self.ticket_id}", headers=headers)
         assert response.status_code == 500
         assert "unexpected error" in response.json()["detail"].lower()
+
+
+class TestTicketListEndpoint:
+    """Test cases for GET /api/tickets endpoint."""
+    
+    def setup_method(self):
+        """Set up test client and mock data."""
+        self.client = TestClient(app)
+        self.guild_id = 123456789012345678
+        self.user_id = "550e8400-e29b-41d4-a716-446655440000"
+        self.discord_id = 987654321098765432
+        
+        # Clear any existing dependency overrides
+        app.dependency_overrides.clear()
+
+    def teardown_method(self):
+        """Clean up after each test."""
+        app.dependency_overrides.clear()
+
+    def _create_test_jwt_token(self, user_id: Optional[str] = None, role: str = "USER", 
+                              discord_id: Optional[int] = None):
+        """Create a valid JWT token for testing."""
+        user_id = user_id or self.user_id
+        discord_id = discord_id or self.discord_id
+        secret_key = os.getenv("JWT_SECRET_KEY", "test-secret-key-for-testing-only-do-not-use-in-production")
+        payload = {
+            "user_id": user_id,
+            "discord_id": discord_id,
+            "role": role,
+            "email": "test@example.com",
+            "iat": datetime.utcnow(),
+            "exp": datetime.utcnow() + timedelta(hours=24)
+        }
+        return jwt.encode(payload, secret_key, algorithm="HS256")
+
+    def _setup_auth_mocks(self, user_id: Optional[str] = None, discord_id: Optional[int] = None, role: str = "USER"):
+        """Set up authentication mocks using dependency overrides."""
+        user_id = user_id or self.user_id
+        discord_id = discord_id or self.discord_id
+        
+        # Mock user data
+        mock_user = Mock()
+        mock_user.id = uuid.UUID(user_id)
+        mock_user.discord_id = discord_id
+        mock_user.role = role
+        mock_user.email = "test@example.com"
+        mock_user.is_active = True
+        
+        # Mock database session and user query
+        mock_db_session = Mock()
+        mock_db_session.query.return_value.filter.return_value.first.return_value = mock_user
+        
+        # Override both database dependencies
+        app.dependency_overrides[get_db] = lambda: mock_db_session  # For middleware
+        app.dependency_overrides[get_db_session] = lambda: mock_db_session  # For endpoint
+        
+        return mock_user, mock_db_session
+
+    def test_endpoint_exists_and_requires_auth(self):
+        """Test that endpoint exists and requires authentication."""
+        response = self.client.get("/api/tickets")
+        # Should return 401 without authentication
+        assert response.status_code == 401
+
+    @patch('app.main.list_tickets_with_pagination')
+    def test_successful_list_with_default_params(self, mock_list_tickets):
+        """Test successful ticket listing with default parameters."""
+        # Setup mocks
+        mock_user, mock_db_session = self._setup_auth_mocks()
+        
+        try:
+            mock_ticket = Mock()
+            mock_ticket.id = 1
+            mock_ticket.guild_id = self.guild_id
+            mock_ticket.creator_id = self.discord_id
+            mock_ticket.status = "open"
+            mock_ticket.reason = "Test ticket"
+            mock_ticket.created_at = datetime.utcnow()
+            mock_ticket.updated_at = datetime.utcnow()
+            mock_ticket.closed_at = None
+            mock_ticket.close_reason = None
+            mock_ticket.is_shadow_closed = False
+            mock_ticket.channel_id = None
+            mock_ticket.assigned_to = None
+            mock_ticket.category = None
+            
+            mock_list_tickets.return_value = {
+                "tickets": [mock_ticket],
+                "pagination": {
+                    "page": 1,
+                    "limit": 20,
+                    "total_count": 1,
+                    "total_pages": 1,
+                    "has_next": False,
+                    "has_previous": False
+                }
+            }
+            
+            token = self._create_test_jwt_token()
+            headers = {"Authorization": f"Bearer {token}"}
+            
+            response = self.client.get(f"/api/tickets?guild_id={self.guild_id}", headers=headers)
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert len(data["tickets"]) == 1
+            assert data["pagination"]["page"] == 1
+            assert data["pagination"]["limit"] == 20
+            assert data["pagination"]["total_count"] == 1
+            
+        finally:
+            # Clean up dependency overrides
+            app.dependency_overrides.clear()
+
+    @patch('app.main.list_tickets_with_pagination')
+    def test_list_with_filters(self, mock_list_tickets):
+        """Test ticket listing with various filters."""
+        mock_user, mock_db_session = self._setup_auth_mocks()
+        
+        try:
+            mock_list_tickets.return_value = {
+                "tickets": [],
+                "pagination": {
+                    "page": 1,
+                    "limit": 20,
+                    "total_count": 0,
+                    "total_pages": 0,
+                    "has_next": False,
+                    "has_previous": False
+                }
+            }
+            
+            token = self._create_test_jwt_token()
+            headers = {"Authorization": f"Bearer {token}"}
+            
+            # Test with multiple filters
+            params = {
+                "guild_id": self.guild_id,
+                "status": "open",
+                "page": 2,
+                "limit": 10,
+                "created_after": "2024-01-01T00:00:00Z"
+            }
+            
+            response = self.client.get("/api/tickets", params=params, headers=headers)
+            
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            
+            # Verify the function was called with correct parameters
+            mock_list_tickets.assert_called_once()
+            call_args = mock_list_tickets.call_args[1]
+            assert call_args["page"] == 2
+            assert call_args["limit"] == 10
+            assert call_args["status"] == "open"
+            assert call_args["guild_id"] == self.guild_id
+            assert call_args["user_id"] == self.user_id
+            assert call_args["user_role"] == "USER"
+            
+        finally:
+            # Clean up dependency overrides
+            app.dependency_overrides.clear()
+
+    def test_validation_errors(self):
+        """Test parameter validation errors."""
+        mock_user, mock_db_session = self._setup_auth_mocks()
+        
+        try:
+            token = self._create_test_jwt_token()
+            headers = {"Authorization": f"Bearer {token}"}
+            
+            # Test invalid page
+            response = self.client.get("/api/tickets?page=0&guild_id=123456789012345678", headers=headers)
+            assert response.status_code == 400
+            assert "Page must be >= 1" in response.json()["detail"]
+            
+            # Test invalid limit
+            response = self.client.get("/api/tickets?limit=101&guild_id=123456789012345678", headers=headers)
+            assert response.status_code == 400
+            assert "Limit must be between 1 and 100" in response.json()["detail"]
+            
+            # Test invalid status
+            response = self.client.get("/api/tickets?status=invalid&guild_id=123456789012345678", headers=headers)
+            assert response.status_code == 400
+            assert "Invalid status" in response.json()["detail"]
+            
+        finally:
+            # Clean up dependency overrides
+            app.dependency_overrides.clear()
+
+    def test_non_admin_requires_guild_id(self):
+        """Test that non-admin users require guild_id filter."""
+        mock_user, mock_db_session = self._setup_auth_mocks(role="USER")
+        
+        try:
+            token = self._create_test_jwt_token(role="USER")
+            headers = {"Authorization": f"Bearer {token}"}
+            
+            response = self.client.get("/api/tickets", headers=headers)
+            assert response.status_code == 400
+            assert "guild_id filter is required" in response.json()["detail"]
+            
+        finally:
+            # Clean up dependency overrides
+            app.dependency_overrides.clear()
+
+    @patch('app.main.list_tickets_with_pagination')
+    def test_admin_can_list_without_guild_id(self, mock_list_tickets):
+        """Test that admin users can list tickets without guild_id filter."""
+        mock_user, mock_db_session = self._setup_auth_mocks(role="ADMIN")
+        
+        try:
+            mock_list_tickets.return_value = {
+                "tickets": [],
+                "pagination": {
+                    "page": 1,
+                    "limit": 20,
+                    "total_count": 0,
+                    "total_pages": 0,
+                    "has_next": False,
+                    "has_previous": False
+                }
+            }
+            
+            token = self._create_test_jwt_token(role="ADMIN")
+            headers = {"Authorization": f"Bearer {token}"}
+            
+            response = self.client.get("/api/tickets", headers=headers)
+            assert response.status_code == 200
+            
+        finally:
+            # Clean up dependency overrides
+            app.dependency_overrides.clear()
+
+    @patch('app.main.list_tickets_with_pagination')
+    def test_pagination_urls(self, mock_list_tickets):
+        """Test that pagination URLs are correctly generated."""
+        mock_user, mock_db_session = self._setup_auth_mocks()
+        
+        try:
+            mock_list_tickets.return_value = {
+                "tickets": [],
+                "pagination": {
+                    "page": 2,
+                    "limit": 10,
+                    "total_count": 100,
+                    "total_pages": 10,
+                    "has_next": True,
+                    "has_previous": True
+                }
+            }
+            
+            token = self._create_test_jwt_token()
+            headers = {"Authorization": f"Bearer {token}"}
+            
+            response = self.client.get(f"/api/tickets?page=2&limit=10&guild_id={self.guild_id}", headers=headers)
+            
+            assert response.status_code == 200
+            data = response.json()
+            
+            # Check pagination URLs
+            assert data["pagination"]["next_page"] is not None
+            assert data["pagination"]["previous_page"] is not None
+            assert "page=3" in data["pagination"]["next_page"]
+            assert "page=1" in data["pagination"]["previous_page"]
+            
+        finally:
+            # Clean up dependency overrides
+            app.dependency_overrides.clear()
+
+    def test_date_filter_validation(self):
+        """Test date filter parameter validation."""
+        mock_user, mock_db_session = self._setup_auth_mocks()
+        
+        try:
+            token = self._create_test_jwt_token()
+            headers = {"Authorization": f"Bearer {token}"}
+            
+            # Test invalid date format
+            response = self.client.get(f"/api/tickets?created_after=invalid-date&guild_id={self.guild_id}", headers=headers)
+            assert response.status_code == 400
+            assert "created_after must be in ISO format" in response.json()["detail"]
+            
+        finally:
+            # Clean up dependency overrides
+            app.dependency_overrides.clear()

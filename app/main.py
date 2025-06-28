@@ -21,11 +21,11 @@ from .database import get_db_session
 from .models.user import User, create_user, get_user_by_discord_id, update_user, get_user_by_id, get_user_by_id
 from .models.ticket import (
     Ticket, create_ticket, has_open_ticket_in_guild, get_ticket_by_id, get_ticket_details_with_users,
-    update_ticket
+    update_ticket, list_tickets_with_pagination, get_tickets_count_by_filters
 )
 from .schemas import (
     TicketCreateRequest, TicketCreateResponse, TicketResponse, ErrorResponse, TicketDetailResponse,
-    TicketUpdateRequest, TicketUpdateResponse
+    TicketUpdateRequest, TicketUpdateResponse, TicketListRequest, TicketListResponse, PaginationMetadata
 )
 from .cache import init_redis
 from .middleware import get_current_user, require_authentication
@@ -340,6 +340,156 @@ async def auth_health_check(user_info=Depends(get_current_user)):
         return {"status": "authenticated", "user_id": user_info["user_id"]}
     else:
         return {"status": "not_authenticated"}
+
+
+@app.get("/api/tickets", response_model=TicketListResponse)
+async def list_tickets(
+    page: int = 1,
+    limit: int = 20,
+    status: Optional[str] = None,
+    assigned_to: Optional[int] = None,
+    guild_id: Optional[int] = None,
+    created_after: Optional[str] = None,
+    created_before: Optional[str] = None,
+    user_info=Depends(require_authentication()),
+    db: Session = Depends(get_db_session)
+):
+    """
+    List tickets with pagination and filtering.
+    
+    Query parameters:
+    - page: Page number (default: 1)
+    - limit: Items per page (default: 20, max: 100)
+    - status: Filter by ticket status
+    - assigned_to: Filter by assigned staff member
+    - guild_id: Filter by guild ID (required for non-admin users)
+    - created_after: Filter tickets created after this date (ISO format)
+    - created_before: Filter tickets created before this date (ISO format)
+    """
+    try:
+        # Validate pagination parameters
+        if page < 1:
+            raise HTTPException(status_code=400, detail="Page must be >= 1")
+        if limit < 1 or limit > 100:
+            raise HTTPException(status_code=400, detail="Limit must be between 1 and 100")
+        
+        # Parse date parameters if provided
+        created_after_dt = None
+        created_before_dt = None
+        
+        if created_after:
+            try:
+                from datetime import datetime
+                created_after_dt = datetime.fromisoformat(created_after.replace('Z', '+00:00'))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="created_after must be in ISO format")
+        
+        if created_before:
+            try:
+                from datetime import datetime
+                created_before_dt = datetime.fromisoformat(created_before.replace('Z', '+00:00'))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="created_before must be in ISO format")
+        
+        # Get user information for permission filtering
+        user_id = user_info.get("user_id")
+        user_role = user_info.get("role", "USER")
+        
+        # For non-admin users, require guild_id filter for security
+        if user_role != "ADMIN" and not guild_id:
+            raise HTTPException(
+                status_code=400, 
+                detail="guild_id filter is required for non-admin users"
+            )
+        
+        # Validate status filter if provided
+        if status:
+            try:
+                from app.status import TicketStatus
+                TicketStatus(status.lower())
+                status = status.lower()
+            except ValueError:
+                from app.status import TicketStatus
+                valid_statuses = [s.value for s in TicketStatus]
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Invalid status. Valid options: {valid_statuses}"
+                )
+        
+        # List tickets with pagination
+        result = list_tickets_with_pagination(
+            db=db,
+            page=page,
+            limit=limit,
+            status=status,
+            assigned_to=assigned_to,
+            guild_id=guild_id,
+            created_after=created_after_dt,
+            created_before=created_before_dt,
+            user_id=user_id,
+            user_role=user_role
+        )
+        
+        # Build pagination URLs
+        from urllib.parse import urlencode
+        base_url = "/api/tickets"
+        
+        # Build query parameters for pagination links
+        query_params = {}
+        if limit != 20:
+            query_params["limit"] = limit
+        if status:
+            query_params["status"] = status
+        if assigned_to:
+            query_params["assigned_to"] = assigned_to
+        if guild_id:
+            query_params["guild_id"] = guild_id
+        if created_after:
+            query_params["created_after"] = created_after
+        if created_before:
+            query_params["created_before"] = created_before
+        
+        # Generate next/previous page URLs
+        next_page_url = None
+        previous_page_url = None
+        
+        if result["pagination"]["has_next"]:
+            next_params = query_params.copy()
+            next_params["page"] = page + 1
+            next_page_url = f"{base_url}?{urlencode(next_params)}"
+        
+        if result["pagination"]["has_previous"]:
+            prev_params = query_params.copy()
+            prev_params["page"] = page - 1
+            previous_page_url = f"{base_url}?{urlencode(prev_params)}"
+        
+        # Update pagination metadata with URLs
+        pagination_meta = PaginationMetadata(
+            page=result["pagination"]["page"],
+            limit=result["pagination"]["limit"],
+            total_count=result["pagination"]["total_count"],
+            total_pages=result["pagination"]["total_pages"],
+            has_next=result["pagination"]["has_next"],
+            has_previous=result["pagination"]["has_previous"],
+            next_page=next_page_url,
+            previous_page=previous_page_url
+        )
+        
+        # Convert tickets to response format
+        ticket_responses = [TicketResponse.model_validate(ticket) for ticket in result["tickets"]]
+        
+        logger.info(f"Listed {len(ticket_responses)} tickets for user {user_id} (page {page})")
+        
+        return TicketListResponse(
+            tickets=ticket_responses,
+            pagination=pagination_meta
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing tickets: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/api/tickets/{ticket_id}", response_model=TicketDetailResponse)

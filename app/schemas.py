@@ -284,3 +284,76 @@ class TicketUpdateResponse(BaseModel):
     ticket: TicketResponse
     changes_made: List[str]
     transition_log: Optional[dict] = None
+
+
+class TicketListRequest(BaseModel):
+    """
+    Pydantic model for ticket list request with filters and pagination.
+    """
+    page: int = Field(default=1, ge=1, description="Page number (starts from 1)")
+    limit: int = Field(default=20, ge=1, le=100, description="Number of tickets per page (max 100)")
+    status: Optional[str] = Field(None, description="Filter by ticket status")
+    assigned_to: Optional[int] = Field(None, description="Filter by assigned staff member")
+    guild_id: Optional[int] = Field(None, description="Filter by guild ID")
+    created_after: Optional[datetime] = Field(None, description="Filter tickets created after this date")
+    created_before: Optional[datetime] = Field(None, description="Filter tickets created before this date")
+
+    @field_validator('status')
+    @classmethod
+    def validate_status(cls, v):
+        """Validate status is a valid ticket status if provided."""
+        if v is not None:
+            try:
+                TicketStatus(v.lower())
+                return v.lower()
+            except ValueError:
+                valid_statuses = [status.value for status in TicketStatus]
+                raise ValueError(f'status must be one of {valid_statuses}')
+        return v
+
+    @field_validator('assigned_to')
+    @classmethod
+    def validate_assigned_to(cls, v):
+        """Validate assigned_to is a valid Discord snowflake if provided."""
+        if v is not None:
+            if not isinstance(v, int) or v <= 0:
+                raise ValueError('assigned_to must be a positive integer')
+            # Discord snowflakes are typically 17-19 digits long
+            if len(str(v)) < 17 or len(str(v)) > 19:
+                raise ValueError('assigned_to must be a valid Discord snowflake (17-19 digits)')
+        return v
+
+    @field_validator('guild_id')
+    @classmethod
+    def validate_guild_id(cls, v):
+        """Validate guild_id is a valid Discord snowflake if provided."""
+        if v is not None:
+            if not isinstance(v, int) or v <= 0:
+                raise ValueError('guild_id must be a positive integer')
+            # Discord snowflakes are typically 17-19 digits long
+            if len(str(v)) < 17 or len(str(v)) > 19:
+                raise ValueError('guild_id must be a valid Discord snowflake (17-19 digits)')
+        return v
+
+
+class PaginationMetadata(BaseModel):
+    """
+    Pagination metadata for list responses.
+    """
+    page: int
+    limit: int
+    total_count: int
+    total_pages: int
+    has_next: bool
+    has_previous: bool
+    next_page: Optional[str] = None
+    previous_page: Optional[str] = None
+
+
+class TicketListResponse(BaseModel):
+    """
+    Response model for ticket list endpoint.
+    """
+    success: bool = True
+    tickets: List[TicketResponse]
+    pagination: PaginationMetadata

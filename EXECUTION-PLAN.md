@@ -186,11 +186,10 @@
 - [x] Validate status transitions using state machine
 - [x] Check user permissions for ticket modification
 - [x] Update updated_at timestamp automatically
-- [x] Set closed_at timestamp when status changes to CLOSED
-- [x] Create audit log entry for each field change
-- [x] Return updated ticket object in response
-- [ ] Emit WebSocket event for real-time updates
-- [x] Add concurrency control to prevent race conditions
+- [x] Set closed_at timestamp when status changes to CLOSED    - [x] Create audit log entry for each field change
+    - [x] Return updated ticket object in response
+    - [x] Emit WebSocket event for real-time updates
+    - [x] Add concurrency control to prevent race conditions
 - [x] Write unit tests for each updatable field
 - [x] Write unit tests for permission validation
 - [x] Write unit tests for audit logging
@@ -198,26 +197,26 @@
 - [x] Document updatable fields and validation rules
 
 ### Story E2-006: List Tickets Endpoint with Pagination
-- [ ] Create GET /api/tickets endpoint with query parameters
-- [ ] Add page parameter with default value 1
-- [ ] Add limit parameter with default 20, maximum 100
-- [ ] Add status filter parameter (optional)
-- [ ] Add assigned_to filter parameter (optional)
-- [ ] Add guild_id filter parameter (required for non-admins)
-- [ ] Add created_after date filter parameter (optional)
-- [ ] Add created_before date filter parameter (optional)
-- [ ] Calculate total count of tickets matching filters
-- [ ] Calculate total pages based on count and limit
-- [ ] Apply user permission filtering (users see only their tickets)
-- [ ] Order results by created_at descending by default
-- [ ] Include pagination metadata in response
-- [ ] Add has_next and has_previous boolean flags
-- [ ] Add next_page and previous_page URLs
-- [ ] Write unit tests for pagination logic
-- [ ] Write unit tests for filtering functionality
-- [ ] Write unit tests for permission-based filtering
-- [ ] Write integration tests for complete listing flow
-- [ ] Document query parameters and response format
+- [x] Create GET /api/tickets endpoint with query parameters
+- [x] Add page parameter with default value 1
+- [x] Add limit parameter with default 20, maximum 100
+- [x] Add status filter parameter (optional)
+- [x] Add assigned_to filter parameter (optional)
+- [x] Add guild_id filter parameter (required for non-admins)
+- [x] Add created_after date filter parameter (optional)
+- [x] Add created_before date filter parameter (optional)
+- [x] Calculate total count of tickets matching filters
+- [x] Calculate total pages based on count and limit
+- [x] Apply user permission filtering (users see only their tickets)
+- [x] Order results by created_at descending by default
+- [x] Include pagination metadata in response
+- [x] Add has_next and has_previous boolean flags
+- [x] Add next_page and previous_page URLs
+- [x] Write unit tests for pagination logic
+- [x] Write unit tests for filtering functionality
+- [x] Write unit tests for permission-based filtering
+- [x] Write integration tests for complete listing flow
+- [x] Document query parameters and response format
 
 ### Story E2-007: Ticket Assignment Logic
 - [ ] Create POST /api/tickets/{ticket_id}/claim endpoint

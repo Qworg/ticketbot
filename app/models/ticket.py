@@ -527,3 +527,152 @@ def update_ticket(
         db.rollback()
         logger.error(f"Failed to update ticket {ticket_id}: {e}")
         raise
+
+
+def list_tickets_with_pagination(
+    db: Session,
+    page: int = 1,
+    limit: int = 20,
+    status: Optional[str] = None,
+    assigned_to: Optional[int] = None,
+    guild_id: Optional[int] = None,
+    created_after: Optional[datetime] = None,
+    created_before: Optional[datetime] = None,
+    user_id: Optional[int] = None,
+    user_role: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    List tickets with pagination and filtering.
+    
+    Args:
+        db: Database session
+        page: Page number (starts from 1)
+        limit: Number of tickets per page
+        status: Filter by ticket status
+        assigned_to: Filter by assigned staff member
+        guild_id: Filter by guild ID
+        created_after: Filter tickets created after this date
+        created_before: Filter tickets created before this date
+        user_id: Current user ID for permission filtering
+        user_role: Current user role for permission filtering
+    
+    Returns:
+        Dictionary containing tickets and pagination metadata
+    """
+    try:
+        # Build base query
+        query = db.query(Ticket)
+        
+        # Apply filters
+        if status:
+            query = query.filter(Ticket.status == status)
+        
+        if assigned_to:
+            query = query.filter(Ticket.assigned_to == assigned_to)
+        
+        if guild_id:
+            query = query.filter(Ticket.guild_id == guild_id)
+        
+        if created_after:
+            query = query.filter(Ticket.created_at >= created_after)
+        
+        if created_before:
+            query = query.filter(Ticket.created_at <= created_before)
+        
+        # Apply user permission filtering
+        # Regular users can only see their own tickets
+        if user_role == "USER" and user_id:
+            query = query.filter(Ticket.creator_id == user_id)
+        
+        # For non-admin users, require guild_id filter for security
+        if user_role != "ADMIN" and not guild_id:
+            raise ValueError("guild_id filter is required for non-admin users")
+        
+        # Order by created_at descending (newest first)
+        query = query.order_by(Ticket.created_at.desc())
+        
+        # Get total count for pagination
+        total_count = query.count()
+        
+        # Calculate pagination
+        total_pages = (total_count + limit - 1) // limit  # Ceiling division
+        has_next = page < total_pages
+        has_previous = page > 1
+        
+        # Apply pagination
+        offset = (page - 1) * limit
+        tickets = query.offset(offset).limit(limit).all()
+        
+        logger.info(f"Listed {len(tickets)} tickets (page {page}/{total_pages}, total: {total_count})")
+        
+        return {
+            "tickets": tickets,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_count": total_count,
+                "total_pages": total_pages,
+                "has_next": has_next,
+                "has_previous": has_previous
+            }
+        }
+        
+    except SQLAlchemyError as e:
+        logger.error(f"Failed to list tickets: {e}")
+        raise
+
+
+def get_tickets_count_by_filters(
+    db: Session,
+    status: Optional[str] = None,
+    assigned_to: Optional[int] = None,
+    guild_id: Optional[int] = None,
+    created_after: Optional[datetime] = None,
+    created_before: Optional[datetime] = None,
+    user_id: Optional[int] = None,
+    user_role: Optional[str] = None
+) -> int:
+    """
+    Get count of tickets matching the given filters.
+    
+    Args:
+        db: Database session
+        status: Filter by ticket status
+        assigned_to: Filter by assigned staff member
+        guild_id: Filter by guild ID
+        created_after: Filter tickets created after this date
+        created_before: Filter tickets created before this date
+        user_id: Current user ID for permission filtering
+        user_role: Current user role for permission filtering
+    
+    Returns:
+        Count of tickets matching filters
+    """
+    try:
+        # Build query with same filters as list_tickets_with_pagination
+        query = db.query(Ticket)
+        
+        if status:
+            query = query.filter(Ticket.status == status)
+        
+        if assigned_to:
+            query = query.filter(Ticket.assigned_to == assigned_to)
+        
+        if guild_id:
+            query = query.filter(Ticket.guild_id == guild_id)
+        
+        if created_after:
+            query = query.filter(Ticket.created_at >= created_after)
+        
+        if created_before:
+            query = query.filter(Ticket.created_at <= created_before)
+        
+        # Apply user permission filtering
+        if user_role == "USER" and user_id:
+            query = query.filter(Ticket.creator_id == user_id)
+        
+        return query.count()
+        
+    except SQLAlchemyError as e:
+        logger.error(f"Failed to count tickets: {e}")
+        raise
