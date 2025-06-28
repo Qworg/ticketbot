@@ -3,8 +3,7 @@ Database configuration and connection setup for the ticketbot application.
 """
 import os
 from sqlalchemy import create_engine, pool
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.pool import QueuePool
 from dotenv import load_dotenv
 

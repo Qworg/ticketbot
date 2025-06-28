@@ -172,7 +172,8 @@ class TestTicketUpdateModels:
         assert empty_category.category is None
         
         # Category too long
-        with pytest.raises(ValueError, match="must be at most 100 characters"):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError, match="String should have at most 100 characters"):
             TicketUpdateRequest(
                 status=None,
                 category="x" * 101,
@@ -189,12 +190,12 @@ class TestTicketUpdateFunction:
         self.mock_db = Mock()
         self.test_user_id = 123456789012345678
         
-    @patch('app.models.ticket.get_ticket_by_id')
-    def test_update_ticket_not_found(self, mock_get_ticket):
+    def test_update_ticket_not_found(self):
         """Test updating non-existent ticket."""
         from app.models.ticket import update_ticket
         
-        mock_get_ticket.return_value = None
+        # Mock db.query to return no ticket
+        self.mock_db.query.return_value.filter.return_value.first.return_value = None
         
         with pytest.raises(ValueError, match="not found"):
             update_ticket(
@@ -204,8 +205,7 @@ class TestTicketUpdateFunction:
                 status="in_progress"
             )
             
-    @patch('app.models.ticket.get_ticket_by_id') 
-    def test_update_ticket_status_change(self, mock_get_ticket):
+    def test_update_ticket_status_change(self):
         """Test updating ticket status."""
         from app.models.ticket import update_ticket
         
@@ -220,50 +220,37 @@ class TestTicketUpdateFunction:
         # Mock update_status method
         mock_ticket.update_status = Mock()
         
-        # Mock getattr calls
-        def mock_getattr(obj, attr, default=None):
-            if attr == 'status':
-                return 'open'
-            elif attr == 'category':
-                return None
-            elif attr == 'assigned_to':
-                return None
-            elif attr == 'close_reason':
-                return None
-            return default
-            
-        mock_get_ticket.return_value = mock_ticket
+        # Mock db.query to return the ticket
+        self.mock_db.query.return_value.filter.return_value.first.return_value = mock_ticket
         
-        with patch('builtins.getattr', side_effect=mock_getattr):
-            with patch('builtins.setattr') as mock_setattr:
-                result = update_ticket(
-                    db=self.mock_db,
-                    ticket_id=1,
-                    user_id=self.test_user_id,
-                    status="in_progress"
-                )
+        result = update_ticket(
+            db=self.mock_db,
+            ticket_id=1,
+            user_id=self.test_user_id,
+            status="in_progress"
+        )
+        
+        # Verify status update was called
+        mock_ticket.update_status.assert_called_once_with(
+            new_status="in_progress",
+            changed_by=self.test_user_id,
+            close_reason=None
+        )
+        
+        # Verify database operations
+        self.mock_db.add.assert_called_once_with(mock_ticket)
+        self.mock_db.commit.assert_called_once()
+        self.mock_db.refresh.assert_called_once_with(mock_ticket)
                 
-                # Verify status update was called
-                mock_ticket.update_status.assert_called_once_with(
-                    new_status="in_progress",
-                    changed_by=self.test_user_id,
-                    close_reason=None
-                )
-                
-                # Verify database operations
-                self.mock_db.add.assert_called_once_with(mock_ticket)
-                self.mock_db.commit.assert_called_once()
-                self.mock_db.refresh.assert_called_once_with(mock_ticket)
-                
-    @patch('app.models.ticket.get_ticket_by_id')
-    def test_update_ticket_assignment(self, mock_get_ticket):
+    def test_update_ticket_assignment(self):
         """Test updating ticket assignment."""
         from app.models.ticket import update_ticket
+        from app.status import TicketStatus
         
         # Mock existing ticket
         mock_ticket = Mock()
         mock_ticket.id = 1
-        mock_ticket.status = "open"
+        mock_ticket.status = TicketStatus.OPEN.value
         mock_ticket.category = None
         mock_ticket.assigned_to = None
         mock_ticket.close_reason = None
@@ -271,36 +258,23 @@ class TestTicketUpdateFunction:
         # Mock update_status method
         mock_ticket.update_status = Mock()
         
-        # Mock getattr calls
-        def mock_getattr(obj, attr, default=None):
-            if attr == 'status':
-                return 'open'
-            elif attr == 'category':
-                return None
-            elif attr == 'assigned_to':
-                return None
-            elif attr == 'close_reason':
-                return None
-            return default
-            
-        mock_get_ticket.return_value = mock_ticket
+        # Mock db.query to return the ticket
+        self.mock_db.query.return_value.filter.return_value.first.return_value = mock_ticket
         
         staff_user_id = 987654321098765432
         
-        with patch('builtins.getattr', side_effect=mock_getattr):
-            with patch('builtins.setattr') as mock_setattr:
-                result = update_ticket(
-                    db=self.mock_db,
-                    ticket_id=1,
-                    user_id=self.test_user_id,
-                    assigned_to=staff_user_id
-                )
-                
-                # Verify assignment was set
-                mock_setattr.assert_any_call(mock_ticket, 'assigned_to', staff_user_id)
-                
-                # Verify auto-transition to in_progress
-                mock_ticket.update_status.assert_called_with(
-                    new_status="in_progress",
-                    changed_by=self.test_user_id
-                )
+        result = update_ticket(
+            db=self.mock_db,
+            ticket_id=1,
+            user_id=self.test_user_id,
+            assigned_to=staff_user_id
+        )
+        
+        # Verify assignment was set
+        assert mock_ticket.assigned_to == staff_user_id
+        
+        # Verify auto-transition to in_progress
+        mock_ticket.update_status.assert_called_with(
+            new_status="in_progress",
+            changed_by=self.test_user_id
+        )

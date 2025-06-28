@@ -600,7 +600,7 @@ async def update_ticket_endpoint(
         )
         
         # Create response
-        ticket_response = TicketResponse.from_orm(updated_ticket)
+        ticket_response = TicketResponse.model_validate(updated_ticket)
         
         # Build changes summary
         changes_made = []
