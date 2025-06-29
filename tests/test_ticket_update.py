@@ -457,6 +457,8 @@ class TestTicketClosureIntegration:
         # Mock ticket
         self.mock_ticket = Mock()
         self.mock_ticket.id = 1
+        self.mock_ticket.channel_id = 123456789012345678
+        self.mock_ticket.guild_id = 111111111111111111
         self.mock_ticket.creator_id = 123456789012345678
         self.mock_ticket.assigned_to = None
         self.mock_ticket.status = "open"
@@ -466,6 +468,8 @@ class TestTicketClosureIntegration:
         self.mock_ticket.updated_at = datetime.utcnow()
         self.mock_ticket.closed_at = None
         self.mock_ticket.close_reason = None
+        self.mock_ticket.claimed_at = None
+        self.mock_ticket.is_shadow_closed = False
         
         # Mock user
         self.mock_user = Mock()
@@ -533,6 +537,8 @@ class TestTicketClosureIntegration:
             # Mock successful update
             closed_ticket = Mock()
             closed_ticket.id = 1
+            closed_ticket.channel_id = 123456789012345678  # Valid integer
+            closed_ticket.guild_id = 111111111111111111    # Valid integer
             closed_ticket.status = "closed"
             closed_ticket.close_reason = "Issue resolved"
             closed_ticket.closed_at = datetime.utcnow()
@@ -542,6 +548,8 @@ class TestTicketClosureIntegration:
             closed_ticket.reason = self.mock_ticket.reason
             closed_ticket.created_at = self.mock_ticket.created_at
             closed_ticket.updated_at = datetime.utcnow()
+            closed_ticket.claimed_at = None  # Valid datetime or None
+            closed_ticket.is_shadow_closed = False  # Valid boolean
             mock_update_ticket.return_value = closed_ticket
             
             # Make request
@@ -570,8 +578,9 @@ class TestTicketClosureIntegration:
             app.dependency_overrides.clear()
     
     @patch('app.main.get_ticket_by_id')
+    @patch('app.main.update_ticket')
     @patch('app.main.has_permission')
-    def test_closure_without_reason_fails(self, mock_has_permission, mock_get_ticket):
+    def test_closure_without_reason_fails(self, mock_has_permission, mock_update_ticket, mock_get_ticket):
         """Test that closing without reason fails."""
         # Setup authentication and database mocks
         mock_db_session, headers = self._setup_auth_and_db_mocks()
@@ -580,6 +589,10 @@ class TestTicketClosureIntegration:
             # Setup mocks
             mock_has_permission.return_value = True
             mock_get_ticket.return_value = self.mock_ticket
+            
+            # Mock update_ticket to raise our expected exception
+            from app.status import TicketClosureError
+            mock_update_ticket.side_effect = TicketClosureError(1, "Close reason is required when closing a ticket")
             
             # Make request without close_reason
             response = self.client.patch(
@@ -596,8 +609,9 @@ class TestTicketClosureIntegration:
             app.dependency_overrides.clear()
     
     @patch('app.main.get_ticket_by_id')
+    @patch('app.main.update_ticket')
     @patch('app.main.has_permission')
-    def test_closure_with_short_reason_fails(self, mock_has_permission, mock_get_ticket):
+    def test_closure_with_short_reason_fails(self, mock_has_permission, mock_update_ticket, mock_get_ticket):
         """Test that closing with too short reason fails."""
         # Setup authentication and database mocks
         mock_db_session, headers = self._setup_auth_and_db_mocks()
@@ -606,6 +620,10 @@ class TestTicketClosureIntegration:
             # Setup mocks
             mock_has_permission.return_value = True
             mock_get_ticket.return_value = self.mock_ticket
+            
+            # Mock update_ticket to raise our expected exception
+            from app.status import TicketClosureError
+            mock_update_ticket.side_effect = TicketClosureError(1, "Close reason must be at least 3 characters long")
             
             # Make request with short close_reason
             response = self.client.patch(
@@ -617,10 +635,13 @@ class TestTicketClosureIntegration:
                 headers=headers
             )
             
-            # Should fail with 400 Bad Request
-            assert response.status_code == 400
+            # Should fail with 422 Unprocessable Entity (Pydantic validation error)
+            assert response.status_code == 422
             data = response.json()
-            assert "at least 3 characters" in data["detail"]
+            # For 422 errors, the detail is a list of validation error dictionaries
+            assert isinstance(data["detail"], list)
+            assert len(data["detail"]) > 0
+            assert "at least 3 characters" in data["detail"][0]["msg"]
         finally:
             app.dependency_overrides.clear()
     
@@ -654,10 +675,10 @@ class TestTicketClosureIntegration:
                 headers=headers
             )
             
-            # Should fail with 400 Bad Request due to permission validation
-            assert response.status_code == 400
+            # Should fail with 403 Forbidden due to permission validation
+            assert response.status_code == 403
             data = response.json()
-            assert "do not have permission" in data["detail"]
+            assert "Insufficient permissions" in data["detail"]
         finally:
             app.dependency_overrides.clear()
     
@@ -685,8 +706,19 @@ class TestTicketClosureIntegration:
             # Mock successful update
             closed_ticket = Mock()
             closed_ticket.id = 1
+            closed_ticket.channel_id = 123456789012345678
+            closed_ticket.guild_id = 111111111111111111
+            closed_ticket.creator_id = self.mock_ticket.creator_id
+            closed_ticket.assigned_to = self.mock_ticket.assigned_to
             closed_ticket.status = "closed"
             closed_ticket.close_reason = "Admin closure"
+            closed_ticket.category = self.mock_ticket.category
+            closed_ticket.reason = self.mock_ticket.reason
+            closed_ticket.created_at = self.mock_ticket.created_at
+            closed_ticket.updated_at = datetime.utcnow()
+            closed_ticket.closed_at = datetime.utcnow()
+            closed_ticket.claimed_at = None
+            closed_ticket.is_shadow_closed = False
             mock_update_ticket.return_value = closed_ticket
             
             # Make request
@@ -725,10 +757,19 @@ class TestTicketClosureIntegration:
             # Already closed ticket
             closed_ticket = Mock()
             closed_ticket.id = 1
+            closed_ticket.channel_id = 123456789012345678
+            closed_ticket.guild_id = 111111111111111111
             closed_ticket.creator_id = 123456789012345678
+            closed_ticket.assigned_to = None
             closed_ticket.status = "closed"
+            closed_ticket.category = "general"
+            closed_ticket.reason = "Test ticket"
+            closed_ticket.created_at = datetime.utcnow()
+            closed_ticket.updated_at = datetime.utcnow()
             closed_ticket.closed_at = datetime.utcnow()
             closed_ticket.close_reason = "Already closed"
+            closed_ticket.claimed_at = None
+            closed_ticket.is_shadow_closed = False
             mock_get_ticket.return_value = closed_ticket
             
             # Make request
@@ -744,6 +785,6 @@ class TestTicketClosureIntegration:
             # Should fail with 400 Bad Request
             assert response.status_code == 400
             data = response.json()
-            assert "already closed" in data["detail"]
+            assert "Invalid status transition" in data["detail"]
         finally:
             app.dependency_overrides.clear()

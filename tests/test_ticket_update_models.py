@@ -234,6 +234,7 @@ class TestTicketUpdateFunction:
         mock_ticket.update_status.assert_called_once_with(
             new_status="in_progress",
             changed_by=self.test_user_id,
+            user_role="USER",
             close_reason=None
         )
         

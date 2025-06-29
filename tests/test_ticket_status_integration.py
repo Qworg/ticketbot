@@ -83,10 +83,12 @@ class TestTicketStatusUpdate:
             
     def test_update_status_to_closed_with_reason(self):
         """Test updating status to closed with close reason."""
-        ticket = Ticket(id=1, status="open")
+        # Create ticket with a creator_id that matches the user making the change
+        ticket = Ticket(id=1, status="open", creator_id=123)
         close_reason = "Issue resolved by user"
         
-        result = ticket.update_status("closed", changed_by=123, close_reason=close_reason)
+        # Use USER role since the creator is closing their own ticket
+        result = ticket.update_status("closed", changed_by=123, user_role="USER", close_reason=close_reason)
         
         assert result is True
         assert str(ticket.status) == "closed"
@@ -96,10 +98,13 @@ class TestTicketStatusUpdate:
         
     def test_update_status_to_closed_without_reason(self):
         """Test updating status to closed without close reason raises exception."""
-        ticket = Ticket(id=1, status="open")
+        # Create ticket with creator_id that matches the user making the change
+        ticket = Ticket(id=1, status="open", creator_id=123)
         
-        with pytest.raises(ValueError) as exc_info:
-            ticket.update_status("closed", changed_by=123)
+        # The test should raise TicketClosureError because close_reason is missing
+        from app.status import TicketClosureError
+        with pytest.raises(TicketClosureError) as exc_info:
+            ticket.update_status("closed", changed_by=123, user_role="USER")
             
         assert "Close reason is required" in str(exc_info.value)
         
