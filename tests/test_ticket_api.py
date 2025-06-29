@@ -116,6 +116,7 @@ class TestTicketCreateEndpoint:
             mock_ticket.closed_at = None
             mock_ticket.close_reason = None
             mock_ticket.assigned_to = None
+            mock_ticket.claimed_at = None
             mock_ticket.is_shadow_closed = False
             
             mock_create_ticket.return_value = mock_ticket
@@ -878,6 +879,7 @@ class TestTicketListEndpoint:
             mock_ticket.is_shadow_closed = False
             mock_ticket.channel_id = None
             mock_ticket.assigned_to = None
+            mock_ticket.claimed_at = None
             mock_ticket.category = None
             
             mock_list_tickets.return_value = {
@@ -1103,3 +1105,476 @@ def test_list_tickets():
     # Test with invalid parameters (missing guild_id)
     response = client.get("/api/tickets?page=1&limit=20")
     assert response.status_code == 401  # Should still require authentication first
+
+
+class TestTicketClaimEndpoint:
+    """Test cases for POST /api/tickets/{ticket_id}/claim endpoint."""
+    
+    def setup_method(self):
+        """Set up test client and mock data."""
+        self.client = TestClient(app)
+        self.ticket_id = 1
+        self.staff_user_id = "550e8400-e29b-41d4-a716-446655440000"
+        self.staff_discord_id = 987654321098765432
+        self.creator_discord_id = 555666777888999000
+        
+        # Clear any existing dependency overrides
+        app.dependency_overrides.clear()
+
+    def teardown_method(self):
+        """Clean up after each test."""
+        app.dependency_overrides.clear()
+
+    def _create_test_jwt_token(self, user_id: str = None, role: str = "STAFF", 
+                              discord_id: int = None):
+        """Create a valid JWT token for testing."""
+        user_id = user_id or self.staff_user_id
+        discord_id = discord_id or self.staff_discord_id
+        secret_key = os.getenv("JWT_SECRET_KEY", "test-secret-key-for-testing-only-do-not-use-in-production")
+        payload = {
+            "user_id": user_id,
+            "discord_id": discord_id,
+            "role": role,
+            "email": "test@example.com",
+            "iat": datetime.utcnow(),
+            "exp": datetime.utcnow() + timedelta(hours=24)
+        }
+        return jwt.encode(payload, secret_key, algorithm="HS256")
+
+    def _setup_auth_mocks(self, user_id: str = None, discord_id: int = None, role: str = "STAFF"):
+        """Set up authentication mocks using dependency overrides."""
+        user_id = user_id or self.staff_user_id
+        discord_id = discord_id or self.staff_discord_id
+        
+        # Mock user data
+        mock_user = Mock()
+        mock_user.id = uuid.UUID(user_id)
+        mock_user.discord_id = discord_id
+        mock_user.role = role
+        mock_user.email = "test@example.com"
+        mock_user.is_active = True
+        
+        # Mock database session and user query
+        mock_db_session = Mock()
+        mock_db_session.query.return_value.filter.return_value.first.return_value = mock_user
+        
+        # Override both database dependencies
+        app.dependency_overrides[get_db] = lambda: mock_db_session  # For middleware
+        app.dependency_overrides[get_db_session] = lambda: mock_db_session  # For endpoint
+        
+        return mock_user, mock_db_session
+
+    def test_endpoint_requires_authentication(self):
+        """Test that the endpoint requires authentication."""
+        response = self.client.post(f"/api/tickets/{self.ticket_id}/claim")
+        assert response.status_code == 401
+
+    def test_invalid_ticket_id_format(self):
+        """Test validation for invalid ticket ID format."""
+        mock_user, mock_db_session = self._setup_auth_mocks()
+        token = self._create_test_jwt_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        # Test negative ticket ID
+        response = self.client.post("/api/tickets/-1/claim", headers=headers)
+        assert response.status_code == 400
+        assert "Invalid ticket ID format" in response.json()["detail"]
+        
+        # Test zero ticket ID
+        response = self.client.post("/api/tickets/0/claim", headers=headers)
+        assert response.status_code == 400
+        assert "Invalid ticket ID format" in response.json()["detail"]
+
+    def test_insufficient_permissions_user_role(self):
+        """Test that users without MANAGE_TICKETS permission cannot claim tickets."""
+        mock_user, mock_db_session = self._setup_auth_mocks(role="USER")
+        token = self._create_test_jwt_token(role="USER")
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        response = self.client.post(f"/api/tickets/{self.ticket_id}/claim", headers=headers)
+        assert response.status_code == 403
+        assert "Insufficient permissions to claim tickets" in response.json()["detail"]
+
+    @patch('app.main.has_permission')
+    @patch('app.main.claim_ticket')
+    def test_ticket_not_found(self, mock_claim_ticket, mock_has_permission):
+        """Test response when ticket is not found."""
+        mock_has_permission.return_value = True
+        mock_claim_ticket.return_value = None
+        mock_user, mock_db_session = self._setup_auth_mocks()
+        token = self._create_test_jwt_token()
+        headers = {"Authorization": f"Bearer {token}"}
+
+        response = self.client.post(f"/api/tickets/{self.ticket_id}/claim", headers=headers)
+        assert response.status_code == 404
+        assert "Ticket not found" in response.json()["detail"]
+
+    @patch('app.main.has_permission')
+    @patch('app.main.claim_ticket')
+    def test_successful_claim(self, mock_claim_ticket, mock_has_permission):
+        """Test successful ticket claim."""
+        # Mock permission check
+        mock_has_permission.return_value = True
+        
+        # Mock the returned ticket
+        mock_ticket = Mock()
+        mock_ticket.id = self.ticket_id
+        mock_ticket.assigned_to = self.staff_discord_id
+        mock_ticket.status = "in_progress"
+        mock_ticket.claimed_at = datetime.utcnow()
+        mock_ticket.guild_id = 123456789012345678
+        mock_ticket.creator_id = self.creator_discord_id
+        mock_ticket.reason = "Test ticket"
+        mock_ticket.category = "Support"
+        mock_ticket.channel_id = None
+        mock_ticket.created_at = datetime.utcnow()
+        mock_ticket.updated_at = datetime.utcnow()
+        mock_ticket.closed_at = None
+        mock_ticket.close_reason = None
+        mock_ticket.is_shadow_closed = False
+        
+        mock_claim_ticket.return_value = mock_ticket
+        mock_user, mock_db_session = self._setup_auth_mocks()
+        token = self._create_test_jwt_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        response = self.client.post(f"/api/tickets/{self.ticket_id}/claim", headers=headers)
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data["success"] is True
+        assert f"Ticket {self.ticket_id} claimed successfully" in data["message"]
+        assert data["ticket"]["id"] == self.ticket_id
+        assert data["ticket"]["assigned_to"] == self.staff_discord_id
+
+    @patch('app.main.has_permission')
+    @patch('app.main.claim_ticket')
+    def test_cannot_claim_own_ticket(self, mock_claim_ticket, mock_has_permission):
+        """Test that users cannot claim their own tickets."""
+        mock_has_permission.return_value = True
+        mock_claim_ticket.side_effect = ValueError("Users cannot claim their own tickets")
+        mock_user, mock_db_session = self._setup_auth_mocks()
+        token = self._create_test_jwt_token()
+        headers = {"Authorization": f"Bearer {token}"}
+
+        response = self.client.post(f"/api/tickets/{self.ticket_id}/claim", headers=headers)
+        assert response.status_code == 403
+        assert "Users cannot claim their own tickets" in response.json()["detail"]
+
+    @patch('app.main.has_permission')
+    @patch('app.main.claim_ticket')
+    def test_ticket_already_assigned(self, mock_claim_ticket, mock_has_permission):
+        """Test error when ticket is already assigned."""
+        mock_has_permission.return_value = True
+        mock_claim_ticket.side_effect = ValueError("Ticket 1 is already assigned to user 123456789")
+        mock_user, mock_db_session = self._setup_auth_mocks()
+        token = self._create_test_jwt_token()
+        headers = {"Authorization": f"Bearer {token}"}
+
+        response = self.client.post(f"/api/tickets/{self.ticket_id}/claim", headers=headers)
+        assert response.status_code == 409
+        assert "Ticket is already assigned to another user" in response.json()["detail"]
+
+    @patch('app.main.has_permission')
+    @patch('app.main.claim_ticket')
+    def test_ticket_cannot_be_assigned(self, mock_claim_ticket, mock_has_permission):
+        """Test error when ticket cannot be assigned due to status."""
+        mock_has_permission.return_value = True
+        mock_claim_ticket.side_effect = ValueError("Ticket 1 with status 'closed' cannot be assigned")
+        mock_user, mock_db_session = self._setup_auth_mocks()
+        token = self._create_test_jwt_token()
+        headers = {"Authorization": f"Bearer {token}"}
+
+        response = self.client.post(f"/api/tickets/{self.ticket_id}/claim", headers=headers)
+        assert response.status_code == 409
+        assert "Ticket cannot be assigned in its current status" in response.json()["detail"]
+
+
+class TestTicketUnclaimEndpoint:
+    """Test cases for POST /api/tickets/{ticket_id}/unclaim endpoint."""
+    
+    def setup_method(self):
+        """Set up test client and mock data."""
+        self.client = TestClient(app)
+        self.ticket_id = 1
+        self.staff_user_id = "550e8400-e29b-41d4-a716-446655440000"
+        self.staff_discord_id = 987654321098765432
+        self.other_staff_discord_id = 111222333444555666
+        
+        # Clear any existing dependency overrides
+        app.dependency_overrides.clear()
+
+    def teardown_method(self):
+        """Clean up after each test."""
+        app.dependency_overrides.clear()
+
+    def _create_test_jwt_token(self, user_id: str = None, role: str = "STAFF", 
+                              discord_id: int = None):
+        """Create a valid JWT token for testing."""
+        user_id = user_id or self.staff_user_id
+        discord_id = discord_id or self.staff_discord_id
+        secret_key = os.getenv("JWT_SECRET_KEY", "test-secret-key-for-testing-only-do-not-use-in-production")
+        payload = {
+            "user_id": user_id,
+            "discord_id": discord_id,
+            "role": role,
+            "email": "test@example.com",
+            "iat": datetime.utcnow(),
+            "exp": datetime.utcnow() + timedelta(hours=24)
+        }
+        return jwt.encode(payload, secret_key, algorithm="HS256")
+
+    def _setup_auth_mocks(self, user_id: str = None, discord_id: int = None, role: str = "STAFF"):
+        """Set up authentication mocks using dependency overrides."""
+        user_id = user_id or self.staff_user_id
+        discord_id = discord_id or self.staff_discord_id
+        
+        # Mock user data
+        mock_user = Mock()
+        mock_user.id = uuid.UUID(user_id)
+        mock_user.discord_id = discord_id
+        mock_user.role = role
+        mock_user.email = "test@example.com"
+        mock_user.is_active = True
+        
+        # Mock database session and user query
+        mock_db_session = Mock()
+        mock_db_session.query.return_value.filter.return_value.first.return_value = mock_user
+        
+        # Override both database dependencies
+        app.dependency_overrides[get_db] = lambda: mock_db_session  # For middleware
+        app.dependency_overrides[get_db_session] = lambda: mock_db_session  # For endpoint
+        
+        return mock_user, mock_db_session
+
+    def test_endpoint_requires_authentication(self):
+        """Test that the endpoint requires authentication."""
+        response = self.client.post(f"/api/tickets/{self.ticket_id}/unclaim")
+        assert response.status_code == 401
+
+    def test_invalid_ticket_id_format(self):
+        """Test validation for invalid ticket ID format."""
+        mock_user, mock_db_session = self._setup_auth_mocks()
+        token = self._create_test_jwt_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        # Test negative ticket ID
+        response = self.client.post("/api/tickets/-1/unclaim", headers=headers)
+        assert response.status_code == 400
+        assert "Invalid ticket ID format" in response.json()["detail"]
+
+    @patch('app.main.unclaim_ticket')
+    def test_ticket_not_found(self, mock_unclaim_ticket):
+        """Test response when ticket is not found."""
+        mock_unclaim_ticket.return_value = None
+        mock_user, mock_db_session = self._setup_auth_mocks()
+        token = self._create_test_jwt_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        response = self.client.post(f"/api/tickets/{self.ticket_id}/unclaim", headers=headers)
+        assert response.status_code == 404
+        assert "Ticket not found" in response.json()["detail"]
+
+    @patch('app.main.unclaim_ticket')
+    def test_successful_unclaim_own_ticket(self, mock_unclaim_ticket):
+        """Test successful unclaiming of own ticket."""
+        # Mock the returned ticket
+        mock_ticket = Mock()
+        mock_ticket.id = self.ticket_id
+        mock_ticket.assigned_to = None
+        mock_ticket.status = "in_progress"
+        mock_ticket.claimed_at = None
+        mock_ticket.guild_id = 123456789012345678
+        mock_ticket.creator_id = 555666777888999000
+        mock_ticket.reason = "Test ticket"
+        mock_ticket.category = "Support"
+        mock_ticket.channel_id = None
+        mock_ticket.created_at = datetime.utcnow()
+        mock_ticket.updated_at = datetime.utcnow()
+        mock_ticket.closed_at = None
+        mock_ticket.close_reason = None
+        mock_ticket.is_shadow_closed = False
+        
+        mock_unclaim_ticket.return_value = mock_ticket
+        mock_user, mock_db_session = self._setup_auth_mocks()
+        token = self._create_test_jwt_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        response = self.client.post(f"/api/tickets/{self.ticket_id}/unclaim", headers=headers)
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data["success"] is True
+        assert f"Ticket {self.ticket_id} unclaimed successfully" in data["message"]
+        assert data["ticket"]["id"] == self.ticket_id
+        assert data["ticket"]["assigned_to"] is None
+
+    @patch('app.main.unclaim_ticket')
+    def test_admin_can_unclaim_any_ticket(self, mock_unclaim_ticket):
+        """Test that admin can unclaim any ticket."""
+        # Mock the returned ticket
+        mock_ticket = Mock()
+        mock_ticket.id = self.ticket_id
+        mock_ticket.assigned_to = None
+        mock_ticket.status = "in_progress"
+        mock_ticket.claimed_at = None
+        mock_ticket.guild_id = 123456789012345678
+        mock_ticket.creator_id = 555666777888999000
+        mock_ticket.reason = "Test ticket"
+        mock_ticket.category = "Support"
+        mock_ticket.channel_id = None
+        mock_ticket.created_at = datetime.utcnow()
+        mock_ticket.updated_at = datetime.utcnow()
+        mock_ticket.closed_at = None
+        mock_ticket.close_reason = None
+        mock_ticket.is_shadow_closed = False
+        
+        mock_unclaim_ticket.return_value = mock_ticket
+        mock_user, mock_db_session = self._setup_auth_mocks(role="ADMIN")
+        token = self._create_test_jwt_token(role="ADMIN")
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        response = self.client.post(f"/api/tickets/{self.ticket_id}/unclaim", headers=headers)
+        assert response.status_code == 200
+
+    @patch('app.main.unclaim_ticket')
+    def test_insufficient_permissions(self, mock_unclaim_ticket):
+        """Test insufficient permissions to unclaim."""
+        mock_unclaim_ticket.side_effect = ValueError("Insufficient permissions to unclaim this ticket")
+        mock_user, mock_db_session = self._setup_auth_mocks()
+        token = self._create_test_jwt_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        response = self.client.post(f"/api/tickets/{self.ticket_id}/unclaim", headers=headers)
+        assert response.status_code == 403
+        assert "Insufficient permissions to unclaim this ticket" in response.json()["detail"]
+
+    @patch('app.main.unclaim_ticket')
+    def test_ticket_not_assigned(self, mock_unclaim_ticket):
+        """Test error when ticket is not assigned to anyone."""
+        mock_unclaim_ticket.side_effect = ValueError("Ticket 1 is not assigned to anyone")
+        mock_user, mock_db_session = self._setup_auth_mocks()
+        token = self._create_test_jwt_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        response = self.client.post(f"/api/tickets/{self.ticket_id}/unclaim", headers=headers)
+        assert response.status_code == 400
+        assert "Ticket is not assigned to anyone" in response.json()["detail"]
+
+
+class TestTicketClaimUnclaimIntegration:
+    """Integration tests for claim/unclaim functionality."""
+    
+    def setup_method(self):
+        """Set up test client and mock data."""
+        self.client = TestClient(app)
+        self.ticket_id = 1
+        self.staff_user_id = "550e8400-e29b-41d4-a716-446655440000"
+        self.staff_discord_id = 987654321098765432
+        
+        # Clear any existing dependency overrides
+        app.dependency_overrides.clear()
+
+    def teardown_method(self):
+        """Clean up after each test."""
+        app.dependency_overrides.clear()
+
+    def _create_test_jwt_token(self, user_id: str = None, role: str = "STAFF", 
+                              discord_id: int = None):
+        """Create a valid JWT token for testing."""
+        user_id = user_id or self.staff_user_id
+        discord_id = discord_id or self.staff_discord_id
+        secret_key = os.getenv("JWT_SECRET_KEY", "test-secret-key-for-testing-only-do-not-use-in-production")
+        payload = {
+            "user_id": user_id,
+            "discord_id": discord_id,
+            "role": role,
+            "email": "test@example.com",
+            "iat": datetime.utcnow(),
+            "exp": datetime.utcnow() + timedelta(hours=24)
+        }
+        return jwt.encode(payload, secret_key, algorithm="HS256")
+
+    def _setup_auth_mocks(self, user_id: str = None, discord_id: int = None, role: str = "STAFF"):
+        """Set up authentication mocks using dependency overrides."""
+        user_id = user_id or self.staff_user_id
+        discord_id = discord_id or self.staff_discord_id
+        
+        # Mock user data
+        mock_user = Mock()
+        mock_user.id = uuid.UUID(user_id)
+        mock_user.discord_id = discord_id
+        mock_user.role = role
+        mock_user.email = "test@example.com"
+        mock_user.is_active = True
+        
+        # Mock database session and user query
+        mock_db_session = Mock()
+        mock_db_session.query.return_value.filter.return_value.first.return_value = mock_user
+        
+        # Override both database dependencies
+        app.dependency_overrides[get_db] = lambda: mock_db_session  # For middleware
+        app.dependency_overrides[get_db_session] = lambda: mock_db_session  # For endpoint
+        
+        return mock_user, mock_db_session
+
+    @patch('app.main.has_permission')
+    @patch('app.main.unclaim_ticket')
+    @patch('app.main.claim_ticket')
+    def test_claim_then_unclaim_workflow(self, mock_claim_ticket, mock_unclaim_ticket, mock_has_permission):
+        """Test the complete claim then unclaim workflow."""
+        # Mock permission check
+        mock_has_permission.return_value = True
+        
+        # Mock ticket for claim
+        claimed_ticket = Mock()
+        claimed_ticket.id = self.ticket_id
+        claimed_ticket.assigned_to = self.staff_discord_id
+        claimed_ticket.status = "in_progress"
+        claimed_ticket.claimed_at = datetime.utcnow()
+        claimed_ticket.guild_id = 123456789012345678
+        claimed_ticket.creator_id = 555666777888999000
+        claimed_ticket.reason = "Test ticket"
+        claimed_ticket.category = "Support"
+        claimed_ticket.channel_id = None
+        claimed_ticket.created_at = datetime.utcnow()
+        claimed_ticket.updated_at = datetime.utcnow()
+        claimed_ticket.closed_at = None
+        claimed_ticket.close_reason = None
+        claimed_ticket.is_shadow_closed = False
+        
+        # Mock ticket for unclaim
+        unclaimed_ticket = Mock()
+        unclaimed_ticket.id = self.ticket_id
+        unclaimed_ticket.assigned_to = None
+        unclaimed_ticket.status = "in_progress"
+        unclaimed_ticket.claimed_at = None
+        unclaimed_ticket.guild_id = 123456789012345678
+        unclaimed_ticket.creator_id = 555666777888999000
+        unclaimed_ticket.reason = "Test ticket"
+        unclaimed_ticket.category = "Support"
+        unclaimed_ticket.channel_id = None
+        unclaimed_ticket.created_at = datetime.utcnow()
+        unclaimed_ticket.updated_at = datetime.utcnow()
+        unclaimed_ticket.closed_at = None
+        unclaimed_ticket.close_reason = None
+        unclaimed_ticket.is_shadow_closed = False
+        
+        mock_claim_ticket.return_value = claimed_ticket
+        mock_unclaim_ticket.return_value = unclaimed_ticket
+        
+        mock_user, mock_db_session = self._setup_auth_mocks()
+        token = self._create_test_jwt_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        # Test claim
+        claim_response = self.client.post(f"/api/tickets/{self.ticket_id}/claim", headers=headers)
+        assert claim_response.status_code == 200
+        claim_data = claim_response.json()
+        assert claim_data["ticket"]["assigned_to"] == self.staff_discord_id
+        
+        # Test unclaim
+        unclaim_response = self.client.post(f"/api/tickets/{self.ticket_id}/unclaim", headers=headers)
+        assert unclaim_response.status_code == 200
+        unclaim_data = unclaim_response.json()
+        assert unclaim_data["ticket"]["assigned_to"] is None

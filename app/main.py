@@ -21,11 +21,12 @@ from .database import get_db_session
 from .models.user import User, create_user, get_user_by_discord_id, update_user, get_user_by_id, get_user_by_id
 from .models.ticket import (
     Ticket, create_ticket, has_open_ticket_in_guild, get_ticket_by_id, get_ticket_details_with_users,
-    update_ticket, list_tickets_with_pagination, get_tickets_count_by_filters
+    update_ticket, list_tickets_with_pagination, get_tickets_count_by_filters, claim_ticket, unclaim_ticket
 )
 from .schemas import (
     TicketCreateRequest, TicketCreateResponse, TicketResponse, ErrorResponse, TicketDetailResponse,
-    TicketUpdateRequest, TicketUpdateResponse, TicketListRequest, TicketListResponse, PaginationMetadata
+    TicketUpdateRequest, TicketUpdateResponse, TicketListRequest, TicketListResponse, PaginationMetadata,
+    TicketClaimResponse, TicketUnclaimResponse
 )
 from .cache import init_redis
 from .middleware import get_current_user, require_authentication
@@ -277,7 +278,7 @@ async def create_ticket_endpoint(
         logger.info(f"Ticket {ticket.id} created by user {ticket_request.creator_id} in guild {ticket_request.guild_id}")
         
         # Create response
-        ticket_response = TicketResponse.from_orm(ticket)
+        ticket_response = TicketResponse.model_validate(ticket)
         return TicketCreateResponse(
             message=f"Ticket {ticket.id} created successfully",
             ticket=ticket_response
@@ -803,6 +804,223 @@ async def update_ticket_endpoint(
     except Exception as e:
         # Handle unexpected errors
         logger.error(f"Unexpected error updating ticket {ticket_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred"
+        )
+
+
+@app.post("/api/tickets/{ticket_id}/claim", response_model=TicketClaimResponse)
+async def claim_ticket_endpoint(
+    ticket_id: int,
+    user_info=Depends(require_authentication()),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Claim an unassigned ticket for a staff member.
+    
+    This endpoint allows staff members to claim unassigned tickets.
+    When a ticket is claimed:
+    - The ticket is assigned to the claiming user
+    - The claimed_at timestamp is set to current time
+    - If the ticket status is 'open', it transitions to 'in_progress'
+    
+    **Access Control:**
+    - Only users with STAFF or ADMIN role can claim tickets
+    - Users cannot claim their own tickets
+    - Tickets must be unassigned and in a state that allows assignment
+    
+    **Args:**
+        ticket_id: ID of the ticket to claim
+        user_info: Authenticated user information from middleware
+        db: Database session dependency
+        
+    **Returns:**
+        TicketClaimResponse: Success message and updated ticket data
+        
+    **Raises:**
+        400: Invalid ticket ID format
+        403: Insufficient permissions or cannot claim own ticket
+        404: Ticket not found
+        409: Ticket already assigned or cannot be assigned
+        500: Database or unexpected error
+    """
+    # Validate ticket ID
+    if ticket_id <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid ticket ID format"
+        )
+    
+    # Check if user has staff permissions
+    user_role = user_info.get('role', 'USER')
+    if not has_permission(user_role, Permission.MANAGE_TICKETS):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions to claim tickets"
+        )
+    
+    try:
+        staff_discord_id = user_info.get('discord_id')
+        if not staff_discord_id:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="User Discord ID not found"
+            )
+        
+        # Attempt to claim the ticket
+        updated_ticket = claim_ticket(db, ticket_id, staff_discord_id)
+        
+        if not updated_ticket:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Ticket not found"
+            )
+        
+        # Convert to response format
+        ticket_response = TicketResponse.model_validate(updated_ticket)
+        
+        return TicketClaimResponse(
+            success=True,
+            message=f"Ticket {ticket_id} claimed successfully",
+            ticket=ticket_response
+        )
+        
+    except ValueError as e:
+        error_msg = str(e).lower()
+        if "cannot claim their own tickets" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Users cannot claim their own tickets"
+            )
+        elif "already assigned" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ticket is already assigned to another user"
+            )
+        elif "cannot be assigned" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ticket cannot be assigned in its current status"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
+    except HTTPException:
+        # Re-raise HTTPExceptions without modification
+        raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error claiming ticket {ticket_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to claim ticket due to database error"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error claiming ticket {ticket_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred"
+        )
+
+
+@app.post("/api/tickets/{ticket_id}/unclaim", response_model=TicketUnclaimResponse)
+async def unclaim_ticket_endpoint(
+    ticket_id: int,
+    user_info=Depends(require_authentication()),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Unclaim a ticket (remove assignment).
+    
+    This endpoint allows staff members to unclaim assigned tickets.
+    When a ticket is unclaimed:
+    - The assigned_to field is set to NULL
+    - The claimed_at timestamp is set to NULL
+    
+    **Access Control:**
+    - Staff can unclaim tickets they own
+    - Admins can unclaim any ticket
+    - Regular users cannot unclaim tickets
+    
+    **Args:**
+        ticket_id: ID of the ticket to unclaim
+        user_info: Authenticated user information from middleware
+        db: Database session dependency
+        
+    **Returns:**
+        TicketUnclaimResponse: Success message and updated ticket data
+        
+    **Raises:**
+        400: Invalid ticket ID format or ticket not assigned
+        403: Insufficient permissions to unclaim
+        404: Ticket not found
+        500: Database or unexpected error
+    """
+    # Validate ticket ID
+    if ticket_id <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid ticket ID format"
+        )
+    
+    try:
+        user_discord_id = user_info.get('discord_id')
+        user_role = user_info.get('role', 'USER')
+        
+        if not user_discord_id:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="User Discord ID not found"
+            )
+        
+        # Attempt to unclaim the ticket
+        updated_ticket = unclaim_ticket(db, ticket_id, user_discord_id, user_role)
+        
+        if not updated_ticket:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Ticket not found"
+            )
+        
+        # Convert to response format
+        ticket_response = TicketResponse.model_validate(updated_ticket)
+        
+        return TicketUnclaimResponse(
+            success=True,
+            message=f"Ticket {ticket_id} unclaimed successfully",
+            ticket=ticket_response
+        )
+        
+    except ValueError as e:
+        error_msg = str(e).lower()
+        if "insufficient permissions" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions to unclaim this ticket"
+            )
+        elif "not assigned" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Ticket is not assigned to anyone"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
+    except HTTPException:
+        # Re-raise HTTPExceptions without modification
+        raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error unclaiming ticket {ticket_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to unclaim ticket due to database error"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error unclaiming ticket {ticket_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred"

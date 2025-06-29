@@ -106,6 +106,7 @@ class TestTicketUpdate:
             mock_updated_ticket.updated_at = datetime.utcnow()
             mock_updated_ticket.closed_at = None
             mock_updated_ticket.close_reason = None
+            mock_updated_ticket.claimed_at = None
             mock_updated_ticket.is_shadow_closed = False
             mock_update_ticket.return_value = mock_updated_ticket
             
@@ -247,6 +248,7 @@ class TestTicketUpdate:
             mock_updated_ticket.updated_at = datetime.utcnow()
             mock_updated_ticket.closed_at = None
             mock_updated_ticket.close_reason = None
+            mock_updated_ticket.claimed_at = None
             mock_updated_ticket.is_shadow_closed = False
             mock_update_ticket.return_value = mock_updated_ticket
             
@@ -393,6 +395,7 @@ class TestTicketUpdate:
             mock_updated_ticket.updated_at = datetime.utcnow()
             mock_updated_ticket.closed_at = datetime.utcnow()
             mock_updated_ticket.close_reason = "Issue resolved"
+            mock_updated_ticket.claimed_at = None
             mock_updated_ticket.is_shadow_closed = False
             mock_update_ticket.return_value = mock_updated_ticket
             

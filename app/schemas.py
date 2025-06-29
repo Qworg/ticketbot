@@ -83,6 +83,8 @@ class TicketResponse(BaseModel):
     """
     Pydantic model for ticket response.
     """
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     channel_id: Optional[int]
     guild_id: int
@@ -95,6 +97,7 @@ class TicketResponse(BaseModel):
     updated_at: datetime
     closed_at: Optional[datetime]
     close_reason: Optional[str]
+    claimed_at: Optional[datetime]
     is_shadow_closed: bool
 
     model_config = ConfigDict(from_attributes=True)
@@ -357,3 +360,21 @@ class TicketListResponse(BaseModel):
     success: bool = True
     tickets: List[TicketResponse]
     pagination: PaginationMetadata
+
+
+class TicketClaimResponse(BaseModel):
+    """
+    Response model for ticket claim endpoint.
+    """
+    success: bool = True
+    message: str
+    ticket: TicketResponse
+
+
+class TicketUnclaimResponse(BaseModel):
+    """
+    Response model for ticket unclaim endpoint.
+    """
+    success: bool = True
+    message: str
+    ticket: TicketResponse

@@ -186,10 +186,11 @@
 - [x] Validate status transitions using state machine
 - [x] Check user permissions for ticket modification
 - [x] Update updated_at timestamp automatically
-- [x] Set closed_at timestamp when status changes to CLOSED    - [x] Create audit log entry for each field change
-    - [x] Return updated ticket object in response
-    - [x] Emit WebSocket event for real-time updates
-    - [x] Add concurrency control to prevent race conditions
+- [x] Set closed_at timestamp when status changes to CLOSED    
+- [x] Create audit log entry for each field change
+- [x] Return updated ticket object in response
+- [ ] Emit WebSocket event for real-time updates
+- [x] Add concurrency control to prevent race conditions
 - [x] Write unit tests for each updatable field
 - [x] Write unit tests for permission validation
 - [x] Write unit tests for audit logging
@@ -219,24 +220,24 @@
 - [x] Document query parameters and response format
 
 ### Story E2-007: Ticket Assignment Logic
-- [ ] Create POST /api/tickets/{ticket_id}/claim endpoint
-- [ ] Check if ticket is currently unassigned
-- [ ] Check if requesting user has staff permissions
-- [ ] Prevent users from claiming their own tickets
-- [ ] Update ticket assigned_to field with user ID
-- [ ] Set ticket status to IN_PROGRESS if currently OPEN
-- [ ] Create audit log entry for claim action
+- [x] Create POST /api/tickets/{ticket_id}/claim endpoint
+- [x] Check if ticket is currently unassigned
+- [x] Check if requesting user has staff permissions
+- [x] Prevent users from claiming their own tickets
+- [x] Update ticket assigned_to field with user ID
+- [x] Set ticket status to IN_PROGRESS if currently OPEN
+- [x] Create audit log entry for claim action
 - [ ] Send WebSocket notification to all ticket participants
-- [ ] Create unclaim endpoint POST /api/tickets/{ticket_id}/unclaim
-- [ ] Allow staff to unclaim tickets they own
-- [ ] Allow admins to unclaim any ticket
-- [ ] Reset assigned_to field to NULL when unclaiming
-- [ ] Add claimed_at timestamp field to track claim time
-- [ ] Write unit tests for successful claim scenarios
-- [ ] Write unit tests for claim permission validation
-- [ ] Write unit tests for unclaim functionality
-- [ ] Write integration tests for claim/unclaim flow
-- [ ] Document assignment endpoints and business rules
+- [x] Create unclaim endpoint POST /api/tickets/{ticket_id}/unclaim
+- [x] Allow staff to unclaim tickets they own
+- [x] Allow admins to unclaim any ticket
+- [x] Reset assigned_to field to NULL when unclaiming
+- [x] Add claimed_at timestamp field to track claim time
+- [x] Write unit tests for successful claim scenarios
+- [x] Write unit tests for claim permission validation
+- [x] Write unit tests for unclaim functionality
+- [x] Write integration tests for claim/unclaim flow
+- [x] Document assignment endpoints and business rules
 
 ### Story E2-008: Ticket Closure Validation
 - [ ] Create ticket closure validation function

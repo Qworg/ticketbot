@@ -71,6 +71,9 @@ class Ticket(Base):
     closed_at = Column(DateTime(timezone=True), nullable=True)
     close_reason = Column(Text, nullable=True)
     
+    # Assignment tracking
+    claimed_at = Column(DateTime(timezone=True), nullable=True)
+    
     # Shadow closure for archiving
     is_shadow_closed = Column(Boolean, nullable=False, default=False)
 
@@ -526,6 +529,131 @@ def update_ticket(
     except SQLAlchemyError as e:
         db.rollback()
         logger.error(f"Failed to update ticket {ticket_id}: {e}")
+        raise
+
+
+def claim_ticket(db: Session, ticket_id: int, staff_discord_id: int) -> Optional[Ticket]:
+    """
+    Claim an unassigned ticket for a staff member.
+    
+    Args:
+        db: Database session
+        ticket_id: ID of the ticket to claim
+        staff_discord_id: Discord ID of the staff member claiming the ticket
+        
+    Returns:
+        Updated ticket object if successful, None if ticket not found
+        
+    Raises:
+        ValueError: If ticket is already assigned or cannot be assigned
+        SQLAlchemyError: If database operation fails
+    """
+    try:
+        # Get the ticket
+        ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+        if not ticket:
+            return None
+            
+        # Check if ticket can be assigned
+        if not ticket.can_be_assigned():
+            raise ValueError(f"Ticket {ticket_id} with status '{getattr(ticket, 'status', 'unknown')}' cannot be assigned")
+            
+        # Check if ticket is already assigned
+        current_assigned = getattr(ticket, 'assigned_to', None)
+        if current_assigned is not None:
+            raise ValueError(f"Ticket {ticket_id} is already assigned to user {current_assigned}")
+            
+        # Check if user is trying to claim their own ticket
+        creator_id = getattr(ticket, 'creator_id', None)
+        if creator_id == staff_discord_id:
+            raise ValueError("Users cannot claim their own tickets")
+            
+        # Claim the ticket
+        setattr(ticket, 'assigned_to', staff_discord_id)
+        setattr(ticket, 'claimed_at', datetime.utcnow())
+        
+        # Set status to IN_PROGRESS if currently OPEN
+        current_status = getattr(ticket, 'status', None)
+        if current_status == 'open':
+            # Use the ticket's update_status method for validation and logging
+            ticket.update_status(
+                new_status='in_progress',
+                changed_by=staff_discord_id,
+                db_session=db
+            )
+        else:
+            # Just commit the assignment changes
+            db.add(ticket)
+            db.commit()
+            db.refresh(ticket)
+        
+        logger.info(f"Ticket {ticket_id} claimed by staff member {staff_discord_id}")
+        return ticket
+        
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Failed to claim ticket {ticket_id}: {e}")
+        raise
+
+
+def unclaim_ticket(db: Session, ticket_id: int, requesting_user_discord_id: int, requesting_user_role: str) -> Optional[Ticket]:
+    """
+    Unclaim a ticket (remove assignment).
+    
+    Args:
+        db: Database session
+        ticket_id: ID of the ticket to unclaim
+        requesting_user_discord_id: Discord ID of the user requesting unclaim
+        requesting_user_role: Role of the requesting user (ADMIN, STAFF, USER)
+        
+    Returns:
+        Updated ticket object if successful, None if ticket not found
+        
+    Raises:
+        ValueError: If user doesn't have permission to unclaim
+        SQLAlchemyError: If database operation fails
+    """
+    try:
+        # Get the ticket
+        ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+        if not ticket:
+            return None
+            
+        # Check if ticket is assigned
+        current_assigned = getattr(ticket, 'assigned_to', None)
+        if current_assigned is None:
+            raise ValueError(f"Ticket {ticket_id} is not assigned to anyone")
+            
+        # Check permissions
+        can_unclaim = False
+        
+        # Staff can unclaim tickets they own
+        if requesting_user_role in ['STAFF', 'ADMIN'] and current_assigned == requesting_user_discord_id:
+            can_unclaim = True
+            
+        # Admins can unclaim any ticket
+        if requesting_user_role == 'ADMIN':
+            can_unclaim = True
+            
+        if not can_unclaim:
+            raise ValueError("Insufficient permissions to unclaim this ticket")
+            
+        # Unclaim the ticket
+        old_assigned_to = current_assigned
+        setattr(ticket, 'assigned_to', None)
+        setattr(ticket, 'claimed_at', None)
+        
+        # Commit the changes
+        db.add(ticket)
+        db.commit()
+        db.refresh(ticket)
+        
+        logger.info(f"Ticket {ticket_id} unclaimed from staff member {old_assigned_to} by {requesting_user_discord_id}")
+        return ticket
+        
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Failed to unclaim ticket {ticket_id}: {e}")
         raise
 
 
