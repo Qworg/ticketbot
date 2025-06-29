@@ -4,7 +4,7 @@ Ticket status state machine implementation.
 This module defines ticket status constants, valid transitions, and validation logic.
 """
 from enum import Enum
-from typing import Dict, List, Set, Optional
+from typing import Dict, List, Set, Optional, Any
 from datetime import datetime
 import logging
 
@@ -274,3 +274,176 @@ def requires_close_reason(current_status: str, new_status: str) -> bool:
         return new_ticket_status == TicketStatus.CLOSED
     except ValueError:
         return False
+
+
+class TicketClosureError(Exception):
+    """Exception raised when ticket closure validation fails."""
+    
+    def __init__(self, ticket_id: int, message: str):
+        self.ticket_id = ticket_id
+        self.message = message
+        super().__init__(f"Ticket {ticket_id}: {message}")
+
+
+def validate_close_reason(close_reason: Optional[str]) -> None:
+    """
+    Validate close reason meets requirements.
+    
+    Args:
+        close_reason: The reason provided for closing the ticket
+        
+    Raises:
+        ValueError: If close reason is invalid
+    """
+    if not close_reason:
+        raise ValueError("Close reason is required when closing a ticket")
+    
+    close_reason = close_reason.strip()
+    if not close_reason:  # Check again after trimming
+        raise ValueError("Close reason is required when closing a ticket")
+    
+    if len(close_reason) < 3:
+        raise ValueError("Close reason must be at least 3 characters long")
+    
+    if len(close_reason) > 200:
+        raise ValueError("Close reason cannot exceed 200 characters")
+
+
+def validate_ticket_closure_permission(ticket, user_id: int, user_role: str) -> bool:
+    """
+    Validate if user has permission to close the specified ticket.
+    
+    Args:
+        ticket: Ticket object to check permissions for
+        user_id: Discord user ID of the user attempting closure
+        user_role: Role of the user (ADMIN, STAFF, USER)
+        
+    Returns:
+        True if user can close the ticket, False otherwise
+    """
+    from .permissions import Role
+    
+    # Admins can close any ticket
+    if user_role == Role.ADMIN:
+        return True
+    
+    # Staff can close assigned tickets or any ticket if they have MANAGE_TICKETS permission
+    if user_role == Role.STAFF:
+        # Staff can always close tickets assigned to them
+        if hasattr(ticket, 'assigned_to') and ticket.assigned_to == user_id:
+            return True
+        # Staff with MANAGE_TICKETS can close any ticket
+        return True
+    
+    # Users can only close their own tickets
+    if user_role == Role.USER:
+        return hasattr(ticket, 'creator_id') and ticket.creator_id == user_id
+    
+    return False
+
+
+def check_ticket_dependencies(ticket) -> List[str]:
+    """
+    Check if ticket has any unresolved dependencies that prevent closure.
+    
+    Args:
+        ticket: Ticket object to check
+        
+    Returns:
+        List of dependency issues (empty if no issues)
+    """
+    issues = []
+    
+    # For now, we don't have complex dependencies implemented
+    # This is a placeholder for future dependency checking
+    # Examples could include:
+    # - Related tickets that must be closed first
+    # - Required approvals or sign-offs
+    # - Pending external integrations
+    
+    # Check if ticket is in a state that allows closure
+    if hasattr(ticket, 'status'):
+        current_status = ticket.status
+        if current_status == TicketStatus.CLOSED:
+            issues.append("Ticket is already closed")
+    
+    return issues
+
+
+def validate_ticket_closure(
+    ticket,
+    user_id: int,
+    user_role: str,
+    close_reason: Optional[str] = None
+) -> None:
+    """
+    Comprehensive ticket closure validation function.
+    
+    Args:
+        ticket: Ticket object to validate for closure
+        user_id: Discord user ID of the user attempting closure
+        user_role: Role of the user (ADMIN, STAFF, USER)
+        close_reason: Reason for closing the ticket
+        
+    Raises:
+        TicketClosureError: If closure validation fails
+        ValueError: If close_reason format is invalid
+    """
+    # Get ticket ID, default to 0 if not available
+    ticket_id = getattr(ticket, 'id', 0)
+    if not isinstance(ticket_id, int):
+        ticket_id = 0
+    
+    # Validate close reason
+    try:
+        validate_close_reason(close_reason)
+    except ValueError as e:
+        raise TicketClosureError(ticket_id, str(e))
+    
+    # Check user permissions
+    if not validate_ticket_closure_permission(ticket, user_id, user_role):
+        raise TicketClosureError(
+            ticket_id,
+            "You do not have permission to close this ticket"
+        )
+    
+    # Check for unresolved dependencies
+    dependency_issues = check_ticket_dependencies(ticket)
+    if dependency_issues:
+        raise TicketClosureError(
+            ticket_id,
+            f"Cannot close ticket due to unresolved dependencies: {', '.join(dependency_issues)}"
+        )
+    
+    # All validations passed
+    logger.info(f"Ticket {ticket_id} closure validation passed for user {user_id}")
+
+
+def create_closure_audit_entry(
+    ticket_id: int,
+    user_id: int,
+    close_reason: str,
+    closed_at: datetime
+) -> Dict[str, Any]:
+    """
+    Create audit log entry for ticket closure.
+    
+    Args:
+        ticket_id: ID of the closed ticket
+        user_id: Discord user ID who closed the ticket
+        close_reason: Reason for closure
+        closed_at: Timestamp when ticket was closed
+        
+    Returns:
+        Audit log entry dictionary
+    """
+    return {
+        "action": "ticket_closed",
+        "ticket_id": ticket_id,
+        "user_id": user_id,
+        "timestamp": closed_at.isoformat(),
+        "details": {
+            "close_reason": close_reason,
+            "closed_by": user_id
+        }
+    }

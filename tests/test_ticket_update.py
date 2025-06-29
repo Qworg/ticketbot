@@ -444,3 +444,306 @@ class TestTicketUpdate:
         # Test invalid assigned_to format
         with pytest.raises(ValueError, match="valid Discord snowflake"):
             TicketUpdateRequest(status=None, category=None, assigned_to=123, close_reason=None)  # Too short
+
+
+class TestTicketClosureIntegration:
+    """Integration tests for ticket closure validation."""
+    
+    def setup_method(self):
+        """Set up test client and mock data."""
+        self.client = TestClient(app)
+        self.mock_db = Mock(spec=Session)
+        
+        # Mock ticket
+        self.mock_ticket = Mock()
+        self.mock_ticket.id = 1
+        self.mock_ticket.creator_id = 123456789012345678
+        self.mock_ticket.assigned_to = None
+        self.mock_ticket.status = "open"
+        self.mock_ticket.category = "general"
+        self.mock_ticket.reason = "Test ticket"
+        self.mock_ticket.created_at = datetime.utcnow()
+        self.mock_ticket.updated_at = datetime.utcnow()
+        self.mock_ticket.closed_at = None
+        self.mock_ticket.close_reason = None
+        
+        # Mock user
+        self.mock_user = Mock()
+        self.mock_user.id = uuid.UUID("550e8400-e29b-41d4-a716-446655440000")
+        self.mock_user.discord_id = 123456789012345678
+        self.mock_user.role = "USER"
+        self.mock_user.email = "test@example.com"
+        self.mock_user.is_active = True
+    
+    def _create_test_jwt_token(self, user_id: str = "550e8400-e29b-41d4-a716-446655440000", 
+                              discord_id: int = 123456789012345678, role: str = "USER"):
+        """Create a valid JWT token for testing."""
+        secret_key = os.getenv("JWT_SECRET_KEY", "test-secret-key-for-testing-only-do-not-use-in-production")
+        payload = {
+            "user_id": user_id,
+            "discord_id": discord_id,
+            "role": role,
+            "email": "test@example.com",
+            "iat": datetime.utcnow(),
+            "exp": datetime.utcnow() + timedelta(hours=24)
+        }
+        return jwt.encode(payload, secret_key, algorithm="HS256")
+    
+    def _setup_auth_and_db_mocks(self, user=None):
+        """Helper method to setup authentication and database mocks."""
+        if user is None:
+            user = self.mock_user
+        
+        # Mock database session with user query
+        mock_db_session = Mock()
+        mock_db_session.query.return_value.filter.return_value.first.return_value = user
+        
+        # Override database dependencies
+        from app.database import get_db, get_db_session
+        app.dependency_overrides[get_db] = lambda: mock_db_session  # For middleware
+        app.dependency_overrides[get_db_session] = lambda: mock_db_session  # For endpoint
+        
+        # Create JWT token and headers
+        token = self._create_test_jwt_token(
+            user_id=str(user.id),
+            discord_id=user.discord_id,
+            role=user.role
+        )
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        return mock_db_session, headers
+    
+    def teardown_method(self):
+        """Clean up after each test."""
+        app.dependency_overrides.clear()
+    
+    @patch('app.main.get_ticket_by_id')
+    @patch('app.main.update_ticket')
+    @patch('app.main.has_permission')
+    def test_successful_ticket_closure_by_creator(self, mock_has_permission, mock_update_ticket, mock_get_ticket):
+        """Test successful ticket closure by ticket creator."""
+        # Setup authentication and database mocks
+        mock_db_session, headers = self._setup_auth_and_db_mocks()
+        
+        try:
+            # Setup mocks
+            mock_has_permission.return_value = True
+            mock_get_ticket.return_value = self.mock_ticket
+            
+            # Mock successful update
+            closed_ticket = Mock()
+            closed_ticket.id = 1
+            closed_ticket.status = "closed"
+            closed_ticket.close_reason = "Issue resolved"
+            closed_ticket.closed_at = datetime.utcnow()
+            closed_ticket.creator_id = self.mock_ticket.creator_id
+            closed_ticket.assigned_to = self.mock_ticket.assigned_to
+            closed_ticket.category = self.mock_ticket.category
+            closed_ticket.reason = self.mock_ticket.reason
+            closed_ticket.created_at = self.mock_ticket.created_at
+            closed_ticket.updated_at = datetime.utcnow()
+            mock_update_ticket.return_value = closed_ticket
+            
+            # Make request
+            response = self.client.patch(
+                "/api/tickets/1",
+                json={
+                    "status": "closed",
+                    "close_reason": "Issue resolved"
+                },
+                headers=headers
+            )
+            
+            # Verify response
+            assert response.status_code == 200
+            data = response.json()
+            assert data["message"] == "Ticket 1 updated successfully"
+            assert data["ticket"]["status"] == "closed"
+            
+            # Verify the update_ticket was called with correct parameters
+            mock_update_ticket.assert_called_once()
+            call_args = mock_update_ticket.call_args
+            assert call_args[1]["user_role"] == "USER"
+            assert call_args[1]["status"] == "closed"
+            assert call_args[1]["close_reason"] == "Issue resolved"
+        finally:
+            app.dependency_overrides.clear()
+    
+    @patch('app.main.get_ticket_by_id')
+    @patch('app.main.has_permission')
+    def test_closure_without_reason_fails(self, mock_has_permission, mock_get_ticket):
+        """Test that closing without reason fails."""
+        # Setup authentication and database mocks
+        mock_db_session, headers = self._setup_auth_and_db_mocks()
+        
+        try:
+            # Setup mocks
+            mock_has_permission.return_value = True
+            mock_get_ticket.return_value = self.mock_ticket
+            
+            # Make request without close_reason
+            response = self.client.patch(
+                "/api/tickets/1",
+                json={"status": "closed"},
+                headers=headers
+            )
+            
+            # Should fail with 400 Bad Request
+            assert response.status_code == 400
+            data = response.json()
+            assert "Close reason is required" in data["detail"]
+        finally:
+            app.dependency_overrides.clear()
+    
+    @patch('app.main.get_ticket_by_id')
+    @patch('app.main.has_permission')
+    def test_closure_with_short_reason_fails(self, mock_has_permission, mock_get_ticket):
+        """Test that closing with too short reason fails."""
+        # Setup authentication and database mocks
+        mock_db_session, headers = self._setup_auth_and_db_mocks()
+        
+        try:
+            # Setup mocks
+            mock_has_permission.return_value = True
+            mock_get_ticket.return_value = self.mock_ticket
+            
+            # Make request with short close_reason
+            response = self.client.patch(
+                "/api/tickets/1",
+                json={
+                    "status": "closed",
+                    "close_reason": "Hi"  # Too short
+                },
+                headers=headers
+            )
+            
+            # Should fail with 400 Bad Request
+            assert response.status_code == 400
+            data = response.json()
+            assert "at least 3 characters" in data["detail"]
+        finally:
+            app.dependency_overrides.clear()
+    
+    @patch('app.main.get_ticket_by_id')
+    @patch('app.main.has_permission')
+    def test_closure_permission_denied_for_non_creator(self, mock_has_permission, mock_get_ticket):
+        """Test that non-creators cannot close tickets."""
+        # Different user (not the creator)
+        different_user = Mock()
+        different_user.id = uuid.UUID("550e8400-e29b-41d4-a716-446655440001")
+        different_user.discord_id = 987654321098765432
+        different_user.role = "USER"
+        different_user.email = "other@example.com"
+        different_user.is_active = True
+        
+        # Setup authentication and database mocks with different user
+        mock_db_session, headers = self._setup_auth_and_db_mocks(user=different_user)
+        
+        try:
+            # Setup mocks
+            mock_has_permission.return_value = False  # User cannot close others' tickets
+            mock_get_ticket.return_value = self.mock_ticket
+            
+            # Make request
+            response = self.client.patch(
+                "/api/tickets/1",
+                json={
+                    "status": "closed",
+                    "close_reason": "Valid reason"
+                },
+                headers=headers
+            )
+            
+            # Should fail with 400 Bad Request due to permission validation
+            assert response.status_code == 400
+            data = response.json()
+            assert "do not have permission" in data["detail"]
+        finally:
+            app.dependency_overrides.clear()
+    
+    @patch('app.main.get_ticket_by_id')
+    @patch('app.main.update_ticket')
+    @patch('app.main.has_permission')
+    def test_admin_can_close_any_ticket(self, mock_has_permission, mock_update_ticket, mock_get_ticket):
+        """Test that admins can close any ticket."""
+        # Admin user
+        admin_user = Mock()
+        admin_user.id = uuid.UUID("550e8400-e29b-41d4-a716-446655440002")
+        admin_user.discord_id = 111111111111111111
+        admin_user.role = "ADMIN"
+        admin_user.email = "admin@example.com"
+        admin_user.is_active = True
+        
+        # Setup authentication and database mocks with admin user
+        mock_db_session, headers = self._setup_auth_and_db_mocks(user=admin_user)
+        
+        try:
+            # Setup mocks
+            mock_has_permission.return_value = True
+            mock_get_ticket.return_value = self.mock_ticket
+            
+            # Mock successful update
+            closed_ticket = Mock()
+            closed_ticket.id = 1
+            closed_ticket.status = "closed"
+            closed_ticket.close_reason = "Admin closure"
+            mock_update_ticket.return_value = closed_ticket
+            
+            # Make request
+            response = self.client.patch(
+                "/api/tickets/1",
+                json={
+                    "status": "closed",
+                    "close_reason": "Admin closure"
+                },
+                headers=headers
+            )
+            
+            # Should succeed
+            assert response.status_code == 200
+            data = response.json()
+            assert data["message"] == "Ticket 1 updated successfully"
+            
+            # Verify the update_ticket was called with ADMIN role
+            mock_update_ticket.assert_called_once()
+            call_args = mock_update_ticket.call_args
+            assert call_args[1]["user_role"] == "ADMIN"
+        finally:
+            app.dependency_overrides.clear()
+    
+    @patch('app.main.get_ticket_by_id')
+    @patch('app.main.has_permission')
+    def test_closure_of_already_closed_ticket_fails(self, mock_has_permission, mock_get_ticket):
+        """Test that closing an already closed ticket fails."""
+        # Setup authentication and database mocks
+        mock_db_session, headers = self._setup_auth_and_db_mocks()
+        
+        try:
+            # Setup mocks
+            mock_has_permission.return_value = True
+            
+            # Already closed ticket
+            closed_ticket = Mock()
+            closed_ticket.id = 1
+            closed_ticket.creator_id = 123456789012345678
+            closed_ticket.status = "closed"
+            closed_ticket.closed_at = datetime.utcnow()
+            closed_ticket.close_reason = "Already closed"
+            mock_get_ticket.return_value = closed_ticket
+            
+            # Make request
+            response = self.client.patch(
+                "/api/tickets/1",
+                json={
+                    "status": "closed",
+                    "close_reason": "Trying to close again"
+                },
+                headers=headers
+            )
+            
+            # Should fail with 400 Bad Request
+            assert response.status_code == 400
+            data = response.json()
+            assert "already closed" in data["detail"]
+        finally:
+            app.dependency_overrides.clear()

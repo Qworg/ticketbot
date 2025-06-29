@@ -125,6 +125,7 @@ class Ticket(Base):
         self, 
         new_status: str, 
         changed_by: int,
+        user_role: str = "USER",
         close_reason: Optional[str] = None,
         db_session: Optional[Session] = None
     ) -> bool:
@@ -134,6 +135,7 @@ class Ticket(Base):
         Args:
             new_status: New status to transition to
             changed_by: User ID who is making the change
+            user_role: Role of the user making the change (for permission checking)
             close_reason: Reason for closure if transitioning to closed
             db_session: Database session for persistence
             
@@ -142,13 +144,29 @@ class Ticket(Base):
             
         Raises:
             StatusTransitionError: If transition is invalid
+            TicketClosureError: If closure validation fails
             ValueError: If close_reason is required but not provided
         """
+        from app.status import validate_ticket_closure, TicketClosureError
+        
         # Validate the transition
         previous_status = str(self.status)
         validated_status = enforce_status_transition(previous_status, new_status)
         
-        # Check if close reason is required
+        # If transitioning to closed, perform comprehensive closure validation
+        if validated_status == TicketStatus.CLOSED:
+            try:
+                validate_ticket_closure(
+                    ticket=self,
+                    user_id=changed_by,
+                    user_role=user_role,
+                    close_reason=close_reason
+                )
+            except TicketClosureError as e:
+                logger.error(f"Ticket closure validation failed: {e}")
+                raise
+        
+        # Check if close reason is required (this is also validated in closure validation)
         if requires_close_reason(previous_status, validated_status) and not close_reason:
             raise ValueError("Close reason is required when transitioning to closed status")
         
@@ -447,6 +465,7 @@ def update_ticket(
     db: Session,
     ticket_id: int,
     user_id: int,
+    user_role: str = "USER",
     status: Optional[str] = None,
     category: Optional[str] = None,
     assigned_to: Optional[int] = None,
@@ -459,6 +478,7 @@ def update_ticket(
         db: Database session
         ticket_id: ID of the ticket to update
         user_id: Discord user ID of the user making the update
+        user_role: Role of the user making the update (for permission checking)
         status: New status (optional)
         category: New category (optional)
         assigned_to: New assigned user ID (optional, can be None to unassign)
@@ -470,6 +490,7 @@ def update_ticket(
     Raises:
         ValueError: If ticket not found or validation fails
         StatusTransitionError: If status transition is invalid
+        TicketClosureError: If closure validation fails
         SQLAlchemyError: If database operation fails
     """
     try:
@@ -486,6 +507,7 @@ def update_ticket(
             ticket.update_status(
                 new_status=status,
                 changed_by=user_id,
+                user_role=user_role,
                 close_reason=close_reason
             )
             changes_made.append(f"status: {getattr(ticket, 'status', '')} -> {status}")

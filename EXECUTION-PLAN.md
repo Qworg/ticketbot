@@ -240,24 +240,24 @@
 - [x] Document assignment endpoints and business rules
 
 ### Story E2-008: Ticket Closure Validation
-- [ ] Create ticket closure validation function
-- [ ] Check if close_reason is provided when closing ticket
-- [ ] Validate close_reason length (minimum 3, maximum 200 characters)
-- [ ] Check if ticket has any unresolved dependencies
-- [ ] Verify user has permission to close the ticket
-- [ ] Allow ticket creator to close their own ticket
-- [ ] Allow assigned staff to close assigned tickets
-- [ ] Allow admins to close any ticket
-- [ ] Set closed_at timestamp when validation passes
-- [ ] Create closure audit log entry with reason
+- [x] Create ticket closure validation function
+- [x] Check if close_reason is provided when closing ticket
+- [x] Validate close_reason length (minimum 3, maximum 200 characters)
+- [x] Check if ticket has any unresolved dependencies
+- [x] Verify user has permission to close the ticket
+- [x] Allow ticket creator to close their own ticket
+- [x] Allow assigned staff to close assigned tickets
+- [x] Allow admins to close any ticket
+- [x] Set closed_at timestamp when validation passes
+- [x] Create closure audit log entry with reason
 - [ ] Send closure notification to all participants
 - [ ] Archive ticket channel in Discord if configured
 - [ ] Generate ticket transcript if requested
-- [ ] Write unit tests for closure validation rules
-- [ ] Write unit tests for permission checking
-- [ ] Write unit tests for audit logging
-- [ ] Write integration tests for complete closure flow
-- [ ] Document closure validation rules and requirements
+- [x] Write unit tests for closure validation rules
+- [x] Write unit tests for permission checking
+- [x] Write unit tests for audit logging
+- [x] Write integration tests for complete closure flow
+- [x] Document closure validation rules and requirements
 
 ## Epic 3: Discord Bot Core Commands (E3)
 

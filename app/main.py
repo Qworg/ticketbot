@@ -744,6 +744,7 @@ async def update_ticket_endpoint(
             db=db,
             ticket_id=ticket_id,
             user_id=discord_id,
+            user_role=user.role,
             status=update_request.status,
             category=update_request.category,
             assigned_to=update_request.assigned_to,
@@ -802,6 +803,18 @@ async def update_ticket_endpoint(
             detail="Failed to update ticket due to database error"
         )
     except Exception as e:
+        # Check if it's a TicketClosureError
+        if e.__class__.__name__ == "TicketClosureError":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
+        # Check if it's a StatusTransitionError
+        elif e.__class__.__name__ == "StatusTransitionError":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
         # Handle unexpected errors
         logger.error(f"Unexpected error updating ticket {ticket_id}: {e}")
         raise HTTPException(
