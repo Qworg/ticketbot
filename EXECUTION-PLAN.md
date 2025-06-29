@@ -262,21 +262,21 @@
 ## Epic 3: Discord Bot Core Commands (E3)
 
 ### Story E3-001: Bot Initialization and Connection
-- [ ] Install interactions.py library and dependencies
-- [ ] Create bot application instance with proper intents
-- [ ] Configure bot token from environment variables
-- [ ] Set required intents: guilds, guild_messages, message_content
-- [ ] Create bot ready event handler
-- [ ] Log successful connection with guild count
-- [ ] Set bot presence/status to indicate online state
-- [ ] Configure proper error handling for connection failures
-- [ ] Add reconnection logic for network interruptions
-- [ ] Create health check function to verify bot connectivity
-- [ ] Add graceful shutdown handling for SIGTERM/SIGINT
-- [ ] Configure logging for bot events and errors
-- [ ] Write unit tests for bot initialization
-- [ ] Write integration tests for Discord connection
-- [ ] Document bot setup and configuration requirements
+- [x] Install interactions.py library and dependencies
+- [x] Create bot application instance with proper intents
+- [x] Configure bot token from environment variables
+- [x] Set required intents: guilds, guild_messages, message_content
+- [x] Create bot ready event handler
+- [x] Log successful connection with guild count
+- [x] Set bot presence/status to indicate online state
+- [x] Configure proper error handling for connection failures
+- [x] Add reconnection logic for network interruptions
+- [x] Create health check function to verify bot connectivity
+- [x] Add graceful shutdown handling for SIGTERM/SIGINT
+- [x] Configure logging for bot events and errors
+- [x] Write unit tests for bot initialization
+- [x] Write integration tests for Discord connection
+- [x] Document bot setup and configuration requirements
 
 ### Story E3-002: Command Registration System
 - [ ] Configure slash command registration for Discord
