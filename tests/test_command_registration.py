@@ -221,6 +221,10 @@ class TestBaseCommand:
 
 def test_get_command_registry():
     """Test global registry function."""
+    # Reset global registry state before test
+    import app.commands.registry
+    app.commands.registry._registry = None
+    
     mock_bot = Mock(spec=interactions.Client)
     
     # First call should require bot
