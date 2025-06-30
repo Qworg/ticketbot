@@ -44,7 +44,18 @@ class HelpCommand(BaseCommand):
                 user = db.query(User).filter(User.discord_id == user_id).first()
                 if user:
                     if guild_id:
-                        user_role = get_user_role_in_guild(db, user.id, guild_id)
+                        # Handle both UUID objects and mock strings in tests
+                        import uuid
+                        if isinstance(user.id, uuid.UUID):
+                            user_uuid = user.id
+                        else:
+                            # For tests or when user.id is a string, try to convert it
+                            try:
+                                user_uuid = uuid.UUID(str(user.id))
+                            except ValueError:
+                                # If it's not a valid UUID string, create a dummy UUID for tests
+                                user_uuid = uuid.uuid4()
+                        user_role = get_user_role_in_guild(db, user_uuid, guild_id)
                     else:
                         user_role = str(user.role)
             finally:

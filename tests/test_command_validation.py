@@ -26,29 +26,40 @@ class TestCommandValidation:
         """Test help command execution."""
         command = HelpCommand()
         
-        with patch('app.database.get_db_session') as mock_get_db:
-            with patch('app.commands.implementations.help.get_command_registry') as mock_registry:
-                # Mock database
-                mock_db = Mock()
-                mock_get_db.return_value = mock_db
-                mock_user = Mock()
-                mock_user.discord_id = 12345
-                mock_user.role = "USER"
-                mock_db.query.return_value.filter.return_value.first.return_value = mock_user
-                
-                # Mock registry
-                mock_reg = Mock()
-                mock_reg.commands = {"help": command}
-                mock_registry.return_value = mock_reg
-                
-                # Execute command
-                await command.execute(self.mock_ctx)
-                
-                # Verify embed was sent
-                self.mock_ctx.send.assert_called_once()
-                call_args = self.mock_ctx.send.call_args
-                assert "embed" in call_args[1]
-                assert call_args[1]["ephemeral"] is True
+        with patch('app.commands.base.get_db_session') as mock_get_db_base:
+            with patch('app.database.get_db_session') as mock_get_db:
+                with patch('app.commands.implementations.help.get_command_registry') as mock_registry:
+                    # Mock database for base command
+                    mock_db_base = Mock()
+                    mock_get_db_base.return_value = mock_db_base
+                    mock_user_base = Mock()
+                    mock_user_base.discord_id = 12345
+                    mock_user_base.role = "USER"
+                    mock_user_base.id = "test-uuid"
+                    mock_db_base.query.return_value.filter.return_value.first.return_value = mock_user_base
+                    
+                    # Mock database for help command
+                    mock_db = Mock()
+                    mock_get_db.return_value = mock_db
+                    mock_user = Mock()
+                    mock_user.discord_id = 12345
+                    mock_user.role = "USER"
+                    mock_user.id = "test-uuid"
+                    mock_db.query.return_value.filter.return_value.first.return_value = mock_user
+                    
+                    # Mock registry
+                    mock_reg = Mock()
+                    mock_reg.commands = {"help": command}
+                    mock_registry.return_value = mock_reg
+                    
+                    # Execute command
+                    await command.execute(self.mock_ctx)
+                    
+                    # Verify embed was sent
+                    self.mock_ctx.send.assert_called_once()
+                    call_args = self.mock_ctx.send.call_args
+                    assert "embed" in call_args[1]
+                    assert call_args[1]["ephemeral"] is True
 
 
 class TestCommandPermissions:
