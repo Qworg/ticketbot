@@ -279,21 +279,21 @@
 - [x] Document bot setup and configuration requirements
 
 ### Story E3-002: Command Registration System
-- [ ] Configure slash command registration for Discord
-- [ ] Create command registration function that runs on startup
-- [ ] Set up global command registration for all guilds
-- [ ] Configure command permissions and restrictions
-- [ ] Add command cooldowns to prevent spam
-- [ ] Create base command class with common functionality
-- [ ] Implement command error handling wrapper
-- [ ] Add command usage logging for analytics
-- [ ] Create command help system with descriptions
-- [ ] Set up command argument validation
-- [ ] Configure command autocomplete where applicable
-- [ ] Add rate limiting for command execution
-- [ ] Write unit tests for command registration
-- [ ] Write unit tests for command validation
-- [ ] Document command registration process and best practices
+- [x] Configure slash command registration for Discord
+- [x] Create command registration function that runs on startup
+- [x] Set up global command registration for all guilds
+- [x] Configure command permissions and restrictions
+- [x] Add command cooldowns to prevent spam
+- [x] Create base command class with common functionality
+- [x] Implement command error handling wrapper
+- [x] Add command usage logging for analytics
+- [x] Create command help system with descriptions
+- [x] Set up command argument validation
+- [x] Configure command autocomplete where applicable
+- [x] Add rate limiting for command execution
+- [x] Write unit tests for command registration
+- [x] Write unit tests for command validation
+- [x] Document command registration process and best practices
 
 ### Story E3-003: /ticket Command Handler
 - [ ] Create slash command definition for /ticket with reason parameter

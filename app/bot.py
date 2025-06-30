@@ -16,6 +16,9 @@ from dotenv import load_dotenv
 import os
 
 from app.database import get_db_session
+from app.commands.registry import get_command_registry
+from app.commands.manager import get_command_manager
+from app.commands.implementations.help import HelpCommand
 
 # Load environment variables
 load_dotenv()
@@ -48,13 +51,26 @@ class TicketBot:
             token=self.token,
             intents=intents,
             disable_dm_commands=True,
-            sync_interactions=True,
+            sync_interactions=False,  # We'll handle sync manually
             logger=logger
         )
         
+        # Initialize command system
+        self.command_registry = get_command_registry(self.bot)
+        self.command_manager = get_command_manager()
+        
         self._setup_event_handlers()
+        self._setup_commands()
         self._is_ready = False
         self._guild_count = 0
+    
+    def _setup_commands(self):
+        """Set up bot commands."""
+        # Register core commands
+        self.command_registry.register_command(HelpCommand())
+        
+        # Add more commands here as they are implemented
+        logger.info(f"Registered {len(self.command_registry.commands)} commands")
     
     def _setup_event_handlers(self):
         """Set up bot event handlers."""
@@ -66,6 +82,16 @@ class TicketBot:
             logger.info(f"Bot connected successfully!")
             logger.info(f"Bot is in {self._guild_count} guilds")
             logger.info(f"Bot user: {self.bot.user.username}#{self.bot.user.discriminator}")
+            
+            # Set up slash commands
+            try:
+                await self.command_registry.setup_slash_commands()
+                logger.info("Slash commands registered successfully")
+            except Exception as e:
+                logger.error(f"Failed to register slash commands: {e}")
+            
+            # Start command manager
+            await self.command_manager.start_maintenance()
             
             # Set bot presence/status
             await self.bot.change_presence(
@@ -106,6 +132,9 @@ class TicketBot:
         """Gracefully stop the bot."""
         logger.info("Stopping Discord bot...")
         try:
+            # Stop command manager first
+            await self.command_manager.stop_maintenance()
+            
             if hasattr(self.bot, 'is_ready') and self.bot.is_ready:
                 await self.bot.stop()
         except (AttributeError, Exception):
