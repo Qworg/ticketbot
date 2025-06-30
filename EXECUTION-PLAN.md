@@ -296,31 +296,31 @@
 - [x] Document command registration process and best practices
 
 ### Story E3-003: /ticket Command Handler
-- [ ] Create slash command definition for /ticket with reason parameter
-- [ ] Add parameter validation for reason (required, 5-500 characters)
-- [ ] Check if user already has open ticket in current guild
-- [ ] Query database for existing user tickets in guild
-- [ ] Return error message if user has existing open ticket
-- [ ] Get or create ticket category in Discord guild
-- [ ] Generate unique ticket channel name with user identifier
-- [ ] Create channel permission overwrites for privacy
-- [ ] Deny read permissions for @everyone role
-- [ ] Grant read/send permissions for ticket creator
-- [ ] Grant read/send permissions for bot
-- [ ] Add staff role permissions if configured
-- [ ] Create Discord text channel with proper permissions
-- [ ] Call ticket creation API to store in database
-- [ ] Send initial embed message in new ticket channel
-- [ ] Include ticket ID, creator, and reason in embed
-- [ ] Add reaction buttons for common actions
-- [ ] Send confirmation DM to ticket creator
+- [x] Create slash command definition for /ticket with reason parameter
+- [x] Add parameter validation for reason (required, 5-500 characters)
+- [x] Check if user already has open ticket in current guild
+- [x] Query database for existing user tickets in guild
+- [x] Return error message if user has existing open ticket
+- [x] Get or create ticket category in Discord guild
+- [x] Generate unique ticket channel name with user identifier
+- [x] Create channel permission overwrites for privacy
+- [x] Deny read permissions for @everyone role
+- [x] Grant read/send permissions for ticket creator
+- [x] Grant read/send permissions for bot
+- [x] Add staff role permissions if configured
+- [x] Create Discord text channel with proper permissions
+- [x] Call ticket creation API to store in database
+- [x] Send initial embed message in new ticket channel
+- [x] Include ticket ID, creator, and reason in embed
+- [x] Add reaction buttons for common actions
+- [x] Send confirmation DM to ticket creator
 - [ ] Emit WebSocket event for real-time dashboard updates
-- [ ] Log ticket creation event for audit purposes
-- [ ] Write unit tests for successful ticket creation
-- [ ] Write unit tests for duplicate ticket prevention
-- [ ] Write unit tests for permission setup
-- [ ] Write integration tests with database API
-- [ ] Document command usage and parameters
+- [x] Log ticket creation event for audit purposes
+- [x] Write unit tests for successful ticket creation
+- [x] Write unit tests for duplicate ticket prevention
+- [x] Write unit tests for permission setup
+- [x] Write integration tests with database API
+- [x] Document command usage and parameters
 
 ### Story E3-004: Channel Permission Setup
 - [ ] Create function to calculate ticket channel permissions

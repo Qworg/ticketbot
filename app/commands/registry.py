@@ -97,14 +97,24 @@ class CommandRegistry:
             command: Command to register
         """
         try:
-            # Create the slash command decorator
-            @self.bot.command(
-                name=command.name,
-                description=command.description
-            )
-            async def command_handler(ctx: interactions.SlashContext, **kwargs):
-                """Generated command handler."""
-                await command.execute(ctx, **kwargs)
+            # Create the slash command decorator with options
+            if command.options:
+                @self.bot.command(
+                    name=command.name,
+                    description=command.description,
+                    options=command.options
+                )
+                async def command_handler(ctx: interactions.SlashContext, **kwargs):
+                    """Generated command handler."""
+                    await command.execute(ctx, **kwargs)
+            else:
+                @self.bot.command(
+                    name=command.name,
+                    description=command.description
+                )
+                async def command_handler(ctx: interactions.SlashContext, **kwargs):
+                    """Generated command handler."""
+                    await command.execute(ctx, **kwargs)
             
             # Store reference to prevent garbage collection
             setattr(self, f"_handler_{command.name}", command_handler)

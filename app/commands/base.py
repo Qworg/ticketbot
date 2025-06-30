@@ -38,7 +38,8 @@ class BaseCommand(ABC):
         cooldown_seconds: float = 0.0,
         rate_limit_per_minute: Optional[int] = None,
         staff_only: bool = False,
-        admin_only: bool = False
+        admin_only: bool = False,
+        options: Optional[List[interactions.SlashCommandOption]] = None
     ):
         """
         Initialize base command.
@@ -51,6 +52,7 @@ class BaseCommand(ABC):
             rate_limit_per_minute: Maximum uses per minute per user
             staff_only: Whether command requires staff role
             admin_only: Whether command requires admin role
+            options: List of slash command options
         """
         self.name = name
         self.description = description
@@ -59,6 +61,7 @@ class BaseCommand(ABC):
         self.rate_limit_per_minute = rate_limit_per_minute
         self.staff_only = staff_only
         self.admin_only = admin_only
+        self.options = options or []
         
         # Cooldown tracking
         self._cooldowns: Dict[int, float] = {}
