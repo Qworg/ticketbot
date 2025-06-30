@@ -14,6 +14,7 @@ from ..errors import CommandValidationError, CommandError
 from ...database import get_db_session
 from ...models.user import User, get_user_by_discord_id, create_user
 from ...models.ticket import has_open_ticket_in_guild, create_ticket
+from ...models.guild import get_guild_staff_role_ids, get_guild_admin_role_ids
 from ...permissions import Permission
 
 
@@ -339,25 +340,82 @@ class TicketCommand(BaseCommand):
                 )
             )
         
-        # Add staff role permissions if configured
-        # TODO: Query database for guild staff role configuration
-        # For now, look for common staff role names
-        staff_roles = []
-        for role in guild.roles:
-            if role.name.lower() in ['staff', 'support', 'moderator', 'admin', 'administrator']:
-                staff_roles.append(role)
-        
-        for role in staff_roles:
-            overwrites.append(
-                interactions.PermissionOverwrite(
-                    id=role.id,
-                    type=interactions.OverwriteType.ROLE,
-                    allow=interactions.Permissions.VIEW_CHANNEL | 
-                          interactions.Permissions.SEND_MESSAGES | 
-                          interactions.Permissions.READ_MESSAGE_HISTORY,
-                    deny=interactions.Permissions.NONE
-                )
-            )
+        # Add staff role permissions from database configuration
+        db = get_db_session()
+        try:
+            guild_id = int(guild.id)
+            
+            # Get configured staff role IDs from database
+            staff_role_ids = get_guild_staff_role_ids(db, guild_id)
+            admin_role_ids = get_guild_admin_role_ids(db, guild_id)
+            
+            # Combine staff and admin role IDs
+            configured_role_ids = set(staff_role_ids + admin_role_ids)
+            
+            # Add permissions for configured roles
+            for role in guild.roles:
+                if int(role.id) in configured_role_ids:
+                    # Admin roles get manage permissions
+                    if int(role.id) in admin_role_ids:
+                        permissions = (
+                            interactions.Permissions.VIEW_CHANNEL | 
+                            interactions.Permissions.SEND_MESSAGES | 
+                            interactions.Permissions.READ_MESSAGE_HISTORY |
+                            interactions.Permissions.MANAGE_CHANNELS |
+                            interactions.Permissions.MANAGE_MESSAGES
+                        )
+                    else:
+                        # Staff roles get basic permissions
+                        permissions = (
+                            interactions.Permissions.VIEW_CHANNEL | 
+                            interactions.Permissions.SEND_MESSAGES | 
+                            interactions.Permissions.READ_MESSAGE_HISTORY
+                        )
+                    
+                    overwrites.append(
+                        interactions.PermissionOverwrite(
+                            id=role.id,
+                            type=interactions.OverwriteType.ROLE,
+                            allow=permissions,
+                            deny=interactions.Permissions.NONE
+                        )
+                    )
+                    logger.debug(f"Added permissions for configured role {role.name} ({role.id})")
+            
+            # Fallback: Add permissions for common staff role names if no roles configured
+            if not configured_role_ids:
+                logger.info(f"No configured staff roles for guild {guild_id}, using fallback role names")
+                for role in guild.roles:
+                    if role.name.lower() in ['staff', 'support', 'moderator', 'admin', 'administrator']:
+                        overwrites.append(
+                            interactions.PermissionOverwrite(
+                                id=role.id,
+                                type=interactions.OverwriteType.ROLE,
+                                allow=interactions.Permissions.VIEW_CHANNEL | 
+                                      interactions.Permissions.SEND_MESSAGES | 
+                                      interactions.Permissions.READ_MESSAGE_HISTORY,
+                                deny=interactions.Permissions.NONE
+                            )
+                        )
+                        logger.debug(f"Added fallback permissions for role {role.name} ({role.id})")
+                        
+        except Exception as e:
+            logger.error(f"Error querying guild configuration: {e}")
+            # Fallback to default behavior if database query fails
+            for role in guild.roles:
+                if role.name.lower() in ['staff', 'support', 'moderator', 'admin', 'administrator']:
+                    overwrites.append(
+                        interactions.PermissionOverwrite(
+                            id=role.id,
+                            type=interactions.OverwriteType.ROLE,
+                            allow=interactions.Permissions.VIEW_CHANNEL | 
+                                  interactions.Permissions.SEND_MESSAGES | 
+                                  interactions.Permissions.READ_MESSAGE_HISTORY,
+                            deny=interactions.Permissions.NONE
+                        )
+                    )
+        finally:
+            db.close()
         
         return overwrites
     
@@ -532,6 +590,131 @@ class TicketCommand(BaseCommand):
         except Exception as e:
             # DM sending can fail, but don't let it break ticket creation
             logger.warning(f"Failed to send confirmation DM to user {user.id}: {e}")
+    
+    async def update_channel_permissions_for_user(
+        self,
+        channel: interactions.GuildText,
+        user: interactions.Member,
+        grant_access: bool = True
+    ) -> bool:
+        """
+        Update channel permissions for a specific user.
+        
+        Args:
+            channel: The ticket channel
+            user: The user to add/remove permissions for
+            grant_access: True to grant access, False to revoke access
+            
+        Returns:
+            True if permissions were updated successfully, False otherwise
+        """
+        try:
+            if grant_access:
+                # Grant user access to the channel
+                overwrite = interactions.PermissionOverwrite(
+                    id=user.id,
+                    type=interactions.OverwriteType.MEMBER,
+                    allow=interactions.Permissions.VIEW_CHANNEL | 
+                          interactions.Permissions.SEND_MESSAGES | 
+                          interactions.Permissions.READ_MESSAGE_HISTORY,
+                    deny=interactions.Permissions.NONE
+                )
+                await channel.edit_permission(
+                    overwrite=overwrite,
+                    reason=f"Added user {user.username} to ticket"
+                )
+                logger.info(f"Granted access to channel {channel.id} for user {user.id}")
+            else:
+                # Revoke user access to the channel
+                overwrite = interactions.PermissionOverwrite(
+                    id=user.id,
+                    type=interactions.OverwriteType.MEMBER,
+                    allow=interactions.Permissions.NONE,
+                    deny=interactions.Permissions.VIEW_CHANNEL | 
+                          interactions.Permissions.SEND_MESSAGES
+                )
+                await channel.edit_permission(
+                    overwrite=overwrite,
+                    reason=f"Removed user {user.username} from ticket"
+                )
+                logger.info(f"Revoked access to channel {channel.id} for user {user.id}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to update permissions for user {user.id} in channel {channel.id}: {e}")
+            return False
+    
+    async def update_channel_permissions_for_role(
+        self,
+        channel: interactions.GuildText,
+        role: interactions.Role,
+        grant_access: bool = True,
+        is_admin: bool = False
+    ) -> bool:
+        """
+        Update channel permissions for a specific role.
+        
+        Args:
+            channel: The ticket channel
+            role: The role to add/remove permissions for
+            grant_access: True to grant access, False to revoke access
+            is_admin: True if this is an admin role (gets additional permissions)
+            
+        Returns:
+            True if permissions were updated successfully, False otherwise
+        """
+        try:
+            if grant_access:
+                # Grant role access to the channel
+                if is_admin:
+                    # Admin roles get additional permissions
+                    permissions = (
+                        interactions.Permissions.VIEW_CHANNEL | 
+                        interactions.Permissions.SEND_MESSAGES | 
+                        interactions.Permissions.READ_MESSAGE_HISTORY |
+                        interactions.Permissions.MANAGE_CHANNELS |
+                        interactions.Permissions.MANAGE_MESSAGES
+                    )
+                else:
+                    # Regular staff permissions
+                    permissions = (
+                        interactions.Permissions.VIEW_CHANNEL | 
+                        interactions.Permissions.SEND_MESSAGES | 
+                        interactions.Permissions.READ_MESSAGE_HISTORY
+                    )
+                
+                overwrite = interactions.PermissionOverwrite(
+                    id=role.id,
+                    type=interactions.OverwriteType.ROLE,
+                    allow=permissions,
+                    deny=interactions.Permissions.NONE
+                )
+                await channel.edit_permission(
+                    overwrite=overwrite,
+                    reason=f"Added role {role.name} to ticket"
+                )
+                logger.info(f"Granted access to channel {channel.id} for role {role.id}")
+            else:
+                # Revoke role access to the channel
+                overwrite = interactions.PermissionOverwrite(
+                    id=role.id,
+                    type=interactions.OverwriteType.ROLE,
+                    allow=interactions.Permissions.NONE,
+                    deny=interactions.Permissions.VIEW_CHANNEL | 
+                          interactions.Permissions.SEND_MESSAGES
+                )
+                await channel.edit_permission(
+                    overwrite=overwrite,
+                    reason=f"Removed role {role.name} from ticket"
+                )
+                logger.info(f"Revoked access to channel {channel.id} for role {role.id}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to update permissions for role {role.id} in channel {channel.id}: {e}")
+            return False
 
 
 

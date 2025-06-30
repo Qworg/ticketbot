@@ -323,24 +323,24 @@
 - [x] Document command usage and parameters
 
 ### Story E3-004: Channel Permission Setup
-- [ ] Create function to calculate ticket channel permissions
-- [ ] Set @everyone role to deny read_messages and send_messages
-- [ ] Grant ticket creator read_messages and send_messages permissions
-- [ ] Grant bot read_messages, send_messages, and manage_channels permissions
-- [ ] Query database for guild staff role configuration
-- [ ] Add staff role with read_messages and send_messages if exists
-- [ ] Add admin role with full channel management permissions
-- [ ] Create permission overwrites dictionary for channel creation
-- [ ] Apply permissions atomically during channel creation
-- [ ] Add error handling for insufficient bot permissions
-- [ ] Log permission setup failures for debugging
-- [ ] Create function to update permissions when adding participants
-- [ ] Create function to revoke permissions when removing participants
-- [ ] Write unit tests for permission calculation
-- [ ] Write unit tests for staff role detection
-- [ ] Write unit tests for permission error handling
-- [ ] Write integration tests for channel creation with permissions
-- [ ] Document permission structure and requirements
+- [x] Create function to calculate ticket channel permissions
+- [x] Set @everyone role to deny read_messages and send_messages
+- [x] Grant ticket creator read_messages and send_messages permissions
+- [x] Grant bot read_messages, send_messages, and manage_channels permissions
+- [x] Query database for guild staff role configuration
+- [x] Add staff role with read_messages and send_messages if exists
+- [x] Add admin role with full channel management permissions
+- [x] Create permission overwrites dictionary for channel creation
+- [x] Apply permissions atomically during channel creation
+- [x] Add error handling for insufficient bot permissions
+- [x] Log permission setup failures for debugging
+- [x] Create function to update permissions when adding participants
+- [x] Create function to revoke permissions when removing participants
+- [x] Write unit tests for permission calculation
+- [x] Write unit tests for staff role detection
+- [x] Write unit tests for permission error handling
+- [x] Write integration tests for channel creation with permissions
+- [x] Document permission structure and requirements
 
 ### Story E3-005: /close Command Handler
 - [ ] Create slash command definition for /close with optional reason parameter

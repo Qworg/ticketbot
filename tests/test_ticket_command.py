@@ -123,6 +123,271 @@ class TestTicketCommand:
             username="NewUser",
             role="USER"
         )
+    
+    @pytest.mark.asyncio
+    async def test_calculate_channel_permissions_basic(self):
+        """Test basic channel permission calculation."""
+        # Mock guild and user
+        mock_guild = MagicMock()
+        mock_guild.id = 123456789
+        mock_guild.default_role = MagicMock()
+        mock_guild.default_role.id = 111111111
+        mock_guild.me = MagicMock()
+        mock_guild.me.id = 222222222
+        mock_guild.roles = []
+        
+        mock_user = MagicMock()
+        mock_user.id = 333333333
+        
+        # Mock database session
+        with patch('app.commands.implementations.ticket.get_db_session') as mock_db:
+            mock_session = MagicMock()
+            mock_db.return_value = mock_session
+            
+            # Mock database functions
+            with patch('app.commands.implementations.ticket.get_guild_staff_role_ids', return_value=[]):
+                with patch('app.commands.implementations.ticket.get_guild_admin_role_ids', return_value=[]):
+                    overwrites = await self.command._calculate_channel_permissions(mock_guild, mock_user)
+        
+        # Should have at least 3 overwrites: @everyone (deny), user (allow), bot (allow)
+        assert len(overwrites) >= 3
+        
+        # Check @everyone deny permissions
+        everyone_overwrite = next((ow for ow in overwrites if ow.id == mock_guild.default_role.id), None)
+        assert everyone_overwrite is not None
+        assert everyone_overwrite.type == interactions.OverwriteType.ROLE
+        assert interactions.Permissions.VIEW_CHANNEL in everyone_overwrite.deny
+        
+        # Check user allow permissions
+        user_overwrite = next((ow for ow in overwrites if ow.id == mock_user.id), None)
+        assert user_overwrite is not None
+        assert user_overwrite.type == interactions.OverwriteType.MEMBER
+        assert interactions.Permissions.VIEW_CHANNEL in user_overwrite.allow
+        
+        # Check bot allow permissions
+        bot_overwrite = next((ow for ow in overwrites if ow.id == mock_guild.me.id), None)
+        assert bot_overwrite is not None
+        assert bot_overwrite.type == interactions.OverwriteType.MEMBER
+        assert interactions.Permissions.MANAGE_CHANNELS in bot_overwrite.allow
+    
+    @pytest.mark.asyncio
+    async def test_calculate_channel_permissions_with_configured_staff(self):
+        """Test channel permission calculation with configured staff roles."""
+        # Mock guild with staff roles
+        mock_guild = MagicMock()
+        mock_guild.id = 123456789
+        mock_guild.default_role = MagicMock()
+        mock_guild.default_role.id = 111111111
+        mock_guild.me = MagicMock()
+        mock_guild.me.id = 222222222
+        
+        # Create mock staff role
+        staff_role = MagicMock()
+        staff_role.id = 444444444
+        staff_role.name = "Support Staff"
+        
+        admin_role = MagicMock()
+        admin_role.id = 555555555
+        admin_role.name = "Admin"
+        
+        mock_guild.roles = [staff_role, admin_role]
+        
+        mock_user = MagicMock()
+        mock_user.id = 333333333
+        
+        # Mock database session
+        with patch('app.commands.implementations.ticket.get_db_session') as mock_db:
+            mock_session = MagicMock()
+            mock_db.return_value = mock_session
+            
+            # Mock database functions to return configured role IDs
+            with patch('app.commands.implementations.ticket.get_guild_staff_role_ids', return_value=[444444444]):
+                with patch('app.commands.implementations.ticket.get_guild_admin_role_ids', return_value=[555555555]):
+                    overwrites = await self.command._calculate_channel_permissions(mock_guild, mock_user)
+        
+        # Should have overwrites for staff and admin roles
+        staff_overwrite = next((ow for ow in overwrites if ow.id == staff_role.id), None)
+        assert staff_overwrite is not None
+        assert staff_overwrite.type == interactions.OverwriteType.ROLE
+        assert interactions.Permissions.VIEW_CHANNEL in staff_overwrite.allow
+        
+        admin_overwrite = next((ow for ow in overwrites if ow.id == admin_role.id), None)
+        assert admin_overwrite is not None
+        assert admin_overwrite.type == interactions.OverwriteType.ROLE
+        assert interactions.Permissions.VIEW_CHANNEL in admin_overwrite.allow
+        assert interactions.Permissions.MANAGE_CHANNELS in admin_overwrite.allow
+    
+    @pytest.mark.asyncio
+    async def test_calculate_channel_permissions_fallback_role_names(self):
+        """Test channel permission calculation with fallback role names."""
+        # Mock guild with common staff role names
+        mock_guild = MagicMock()
+        mock_guild.id = 123456789
+        mock_guild.default_role = MagicMock()
+        mock_guild.default_role.id = 111111111
+        mock_guild.me = MagicMock()
+        mock_guild.me.id = 222222222
+        
+        # Create mock roles with common names
+        staff_role = MagicMock()
+        staff_role.id = 444444444
+        staff_role.name = "Staff"
+        
+        admin_role = MagicMock()
+        admin_role.id = 555555555
+        admin_role.name = "Administrator"
+        
+        other_role = MagicMock()
+        other_role.id = 666666666
+        other_role.name = "Member"
+        
+        mock_guild.roles = [staff_role, admin_role, other_role]
+        
+        mock_user = MagicMock()
+        mock_user.id = 333333333
+        
+        # Mock database session
+        with patch('app.commands.implementations.ticket.get_db_session') as mock_db:
+            mock_session = MagicMock()
+            mock_db.return_value = mock_session
+            
+            # Mock database functions to return empty lists (no configured roles)
+            with patch('app.commands.implementations.ticket.get_guild_staff_role_ids', return_value=[]):
+                with patch('app.commands.implementations.ticket.get_guild_admin_role_ids', return_value=[]):
+                    overwrites = await self.command._calculate_channel_permissions(mock_guild, mock_user)
+        
+        # Should have overwrites for staff and admin roles based on names
+        staff_overwrite = next((ow for ow in overwrites if ow.id == staff_role.id), None)
+        assert staff_overwrite is not None
+        
+        admin_overwrite = next((ow for ow in overwrites if ow.id == admin_role.id), None)
+        assert admin_overwrite is not None
+        
+        # Should NOT have overwrite for "Member" role
+        member_overwrite = next((ow for ow in overwrites if ow.id == other_role.id), None)
+        assert member_overwrite is None
+    
+    @pytest.mark.asyncio
+    async def test_calculate_channel_permissions_database_error(self):
+        """Test channel permission calculation when database query fails."""
+        mock_guild = MagicMock()
+        mock_guild.id = 123456789
+        mock_guild.default_role = MagicMock()
+        mock_guild.default_role.id = 111111111
+        mock_guild.me = MagicMock()
+        mock_guild.me.id = 222222222
+        
+        # Create mock role with common name for fallback
+        staff_role = MagicMock()
+        staff_role.id = 444444444
+        staff_role.name = "Staff"
+        
+        mock_guild.roles = [staff_role]
+        
+        mock_user = MagicMock()
+        mock_user.id = 333333333
+        
+        # Mock database session to raise an exception
+        with patch('app.commands.implementations.ticket.get_db_session') as mock_db:
+            mock_session = MagicMock()
+            mock_db.return_value = mock_session
+            
+            # Mock database functions to raise an exception
+            with patch('app.commands.implementations.ticket.get_guild_staff_role_ids', side_effect=Exception("Database error")):
+                overwrites = await self.command._calculate_channel_permissions(mock_guild, mock_user)
+        
+        # Should still work with fallback behavior
+        staff_overwrite = next((ow for ow in overwrites if ow.id == staff_role.id), None)
+        assert staff_overwrite is not None
+    
+    @pytest.mark.asyncio
+    async def test_update_channel_permissions_for_user_grant(self):
+        """Test granting channel permissions to a user."""
+        mock_channel = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.id = 123456789
+        mock_user.username = "testuser"
+        
+        result = await self.command.update_channel_permissions_for_user(
+            mock_channel, mock_user, grant_access=True
+        )
+        
+        assert result is True
+        mock_channel.edit_permission.assert_called_once()
+        
+        # Check the overwrite parameter
+        call_args = mock_channel.edit_permission.call_args
+        overwrite = call_args.kwargs['overwrite']
+        assert overwrite.id == mock_user.id
+        assert overwrite.type == interactions.OverwriteType.MEMBER
+        assert interactions.Permissions.VIEW_CHANNEL in overwrite.allow
+    
+    @pytest.mark.asyncio
+    async def test_update_channel_permissions_for_user_revoke(self):
+        """Test revoking channel permissions from a user."""
+        mock_channel = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.id = 123456789
+        mock_user.username = "testuser"
+        
+        result = await self.command.update_channel_permissions_for_user(
+            mock_channel, mock_user, grant_access=False
+        )
+        
+        assert result is True
+        mock_channel.edit_permission.assert_called_once()
+        
+        # Check the overwrite parameter
+        call_args = mock_channel.edit_permission.call_args
+        overwrite = call_args.kwargs['overwrite']
+        assert overwrite.id == mock_user.id
+        assert interactions.Permissions.VIEW_CHANNEL in overwrite.deny
+    
+    @pytest.mark.asyncio
+    async def test_update_channel_permissions_for_role_grant_admin(self):
+        """Test granting admin channel permissions to a role."""
+        mock_channel = AsyncMock()
+        mock_role = MagicMock()
+        mock_role.id = 123456789
+        mock_role.name = "Admin"
+        
+        result = await self.command.update_channel_permissions_for_role(
+            mock_channel, mock_role, grant_access=True, is_admin=True
+        )
+        
+        assert result is True
+        mock_channel.edit_permission.assert_called_once()
+        
+        # Check the overwrite parameter
+        call_args = mock_channel.edit_permission.call_args
+        overwrite = call_args.kwargs['overwrite']
+        assert overwrite.id == mock_role.id
+        assert overwrite.type == interactions.OverwriteType.ROLE
+        assert interactions.Permissions.MANAGE_CHANNELS in overwrite.allow
+    
+    @pytest.mark.asyncio
+    async def test_update_channel_permissions_for_role_grant_staff(self):
+        """Test granting staff channel permissions to a role."""
+        mock_channel = AsyncMock()
+        mock_role = MagicMock()
+        mock_role.id = 123456789
+        mock_role.name = "Staff"
+        
+        result = await self.command.update_channel_permissions_for_role(
+            mock_channel, mock_role, grant_access=True, is_admin=False
+        )
+        
+        assert result is True
+        mock_channel.edit_permission.assert_called_once()
+        
+        # Check the overwrite parameter
+        call_args = mock_channel.edit_permission.call_args
+        overwrite = call_args.kwargs['overwrite']
+        assert overwrite.id == mock_role.id
+        assert overwrite.type == interactions.OverwriteType.ROLE
+        assert interactions.Permissions.VIEW_CHANNEL in overwrite.allow
+        # Staff roles should NOT have manage permissions
+        assert interactions.Permissions.MANAGE_CHANNELS not in overwrite.allow
 
 
 if __name__ == "__main__":
