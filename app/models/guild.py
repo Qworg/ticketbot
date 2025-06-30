@@ -5,7 +5,7 @@ Guild model for storing guild-specific configuration.
 from datetime import datetime
 from typing import Optional, List
 from sqlalchemy import Column, BigInteger, String, DateTime, Boolean, func, JSON
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, Mapped, mapped_column
 
 from ..database import Base
 
@@ -16,30 +16,30 @@ class Guild(Base):
     __tablename__ = 'guilds'
     
     # Discord guild ID as primary key
-    id = Column(BigInteger, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, index=True)
     
     # Guild name (for reference)
-    name = Column(String(100), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
     
     # Staff role configurations (JSON array of role IDs)
-    staff_role_ids = Column(JSON, nullable=True, default=list)
+    staff_role_ids: Mapped[Optional[List[int]]] = mapped_column(JSON, nullable=True)
     
     # Admin role configurations (JSON array of role IDs)
-    admin_role_ids = Column(JSON, nullable=True, default=list)
+    admin_role_ids: Mapped[Optional[List[int]]] = mapped_column(JSON, nullable=True)
     
     # Ticket category settings
-    ticket_category_id = Column(BigInteger, nullable=True)
-    ticket_category_name = Column(String(100), nullable=False, default="🎫 Tickets")
+    ticket_category_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    ticket_category_name: Mapped[str] = mapped_column(String(100), nullable=False, default="🎫 Tickets")
     
     # Auto-archive settings
-    auto_archive_hours = Column(BigInteger, nullable=False, default=24)
+    auto_archive_hours: Mapped[int] = mapped_column(BigInteger, nullable=False, default=24)
     
     # Transcript settings
-    auto_transcript = Column(Boolean, nullable=False, default=False)
+    auto_transcript: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     
     # Timestamps
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
 def get_guild_by_id(db: Session, guild_id: int) -> Optional[Guild]:
@@ -98,7 +98,7 @@ def create_or_update_guild(
         guild.ticket_category_name = ticket_category_name
         guild.auto_archive_hours = auto_archive_hours
         guild.auto_transcript = auto_transcript
-        guild.updated_at = datetime.utcnow()
+        # updated_at will be automatically set by SQLAlchemy onupdate
     else:
         # Create new guild
         guild = Guild(
