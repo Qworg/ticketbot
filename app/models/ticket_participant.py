@@ -135,8 +135,12 @@ def remove_participant_from_ticket(
             logger.warning(f"Participant {user_id} not found in ticket {ticket_id}")
             return False
         
-        # Soft delete by setting removed_at timestamp
-        participant.removed_at = datetime.utcnow()
+        # Soft delete by setting removed_at timestamp using update query
+        db.query(TicketParticipant).filter(
+            TicketParticipant.ticket_id == ticket_id,
+            TicketParticipant.user_id == user_id,
+            TicketParticipant.removed_at.is_(None)
+        ).update({TicketParticipant.removed_at: datetime.utcnow()})
         
         db.commit()
         

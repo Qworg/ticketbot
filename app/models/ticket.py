@@ -4,7 +4,7 @@ Represents support tickets created by users in Discord guilds.
 """
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, Boolean, ForeignKey, Index, or_
+from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, Boolean, ForeignKey, Index, or_, text
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship, Session
 from sqlalchemy.exc import SQLAlchemyError
@@ -718,7 +718,7 @@ def list_tickets_with_pagination(
         
         # Apply filters
         if status:
-            query = query.filter(Ticket.status == status)
+            query = query.filter_by(status=status)
         
         if assigned_to:
             query = query.filter(Ticket.assigned_to == assigned_to)
@@ -806,7 +806,7 @@ def get_tickets_count_by_filters(
         query = db.query(Ticket)
         
         if status:
-            query = query.filter(Ticket.status == status)
+            query = query.filter_by(status=status)
         
         if assigned_to:
             query = query.filter(Ticket.assigned_to == assigned_to)
