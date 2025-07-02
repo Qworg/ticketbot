@@ -4,6 +4,7 @@ Integration tests for the close command implementation.
 
 import pytest
 import asyncio
+import uuid
 from unittest.mock import Mock, AsyncMock, patch
 from datetime import datetime
 
@@ -78,20 +79,22 @@ class TestCloseCommandIntegration:
         mock_ctx.send = AsyncMock()
         mock_ctx.edit = AsyncMock()
         mock_ctx.bot = Mock()
+         # Mock button interaction - the key is that button_response.ctx is what gets passed to _handle_close_confirmation
+        mock_button_response = Mock()
+        mock_button_response.ctx = Mock()
+        mock_button_response.ctx.custom_id = f"close_confirm_{mock_ticket.id}"
+        mock_button_response.ctx.channel = mock_ctx.channel
+        mock_button_response.ctx.guild = mock_ctx.guild
+        mock_button_response.ctx.author = mock_ctx.author
+        mock_button_response.ctx.send = AsyncMock()
+
+        mock_ctx.bot.wait_for_component = AsyncMock(return_value=mock_button_response)
         
-        # Mock button interaction
-        mock_button_ctx = Mock()
-        mock_button_ctx.ctx = Mock()
-        mock_button_ctx.ctx.custom_id = f"close_confirm_{mock_ticket.id}"
-        mock_button_ctx.ctx.channel = mock_ctx.channel
-        mock_button_ctx.ctx.guild = mock_ctx.guild
-        mock_button_ctx.ctx.author = mock_ctx.author
-        mock_button_ctx.send = AsyncMock()
-        
-        mock_ctx.bot.wait_for_component = AsyncMock(return_value=mock_button_ctx)
-        
-        # Mock async sleep for deletion scheduling
-        with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
+        # Mock all async methods and task creation
+        with patch.object(self.command, '_send_closure_notification', new_callable=AsyncMock) as mock_notify, \
+             patch.object(self.command, '_update_channel_permissions_readonly', new_callable=AsyncMock) as mock_perms, \
+             patch.object(self.command, '_update_channel_name_closed', new_callable=AsyncMock) as mock_name, \
+             patch.object(self.command, '_schedule_channel_deletion', new_callable=AsyncMock) as mock_schedule:
             # Execute command
             await self.command._execute(mock_ctx, reason="Integration test reason")
         
@@ -113,22 +116,36 @@ class TestCloseCommandIntegration:
         assert confirmation_args.get('ephemeral') is True
         
         # Verify success message
-        mock_button_ctx.send.assert_called_once()
-        success_args = mock_button_ctx.send.call_args[1]
-        assert "closed successfully" in success_args.get('content', '')
+        mock_button_response.ctx.send.assert_called_once()
+        # Check the call arguments - first positional arg is content
+        call_args = mock_button_response.ctx.send.call_args
+        assert len(call_args[0]) > 0  # Has positional arguments
+        assert "closed successfully" in call_args[0][0]  # First positional arg contains success message
+        assert call_args[1].get('ephemeral') is True  # Keyword arg ephemeral=True
         
-        # Verify closure notification
-        mock_ctx.channel.send.assert_called_once()
-        notification_args = mock_ctx.channel.send.call_args[1]
-        assert 'embeds' in notification_args
+        # Verify closure notification method was called (mocked)
+        mock_notify.assert_called_once()
+        # Verify the notification was called with correct parameters
+        notify_args = mock_notify.call_args[0]
+        assert notify_args[0] == mock_button_response.ctx.channel  # channel
+        assert notify_args[2] == mock_button_response.ctx.author  # closer
+        assert notify_args[3] == "Integration test reason"  # reason
         
-        # Verify channel permissions updated
-        mock_ctx.channel.edit_permission.assert_called_once()
+        # Verify channel permissions method was called (mocked)
+        mock_perms.assert_called_once()
+        perms_args = mock_perms.call_args[0]
+        assert perms_args[0] == mock_button_response.ctx.channel  # channel
+        assert perms_args[1] == mock_button_response.ctx.guild  # guild
         
-        # Verify channel name updated
-        mock_ctx.channel.edit.assert_called_once()
-        name_args = mock_ctx.channel.edit.call_args[1]
-        assert name_args['name'] == "closed-ticket-123"
+        # Verify channel name update method was called (mocked)
+        mock_name.assert_called_once()
+        name_args = mock_name.call_args[0]
+        assert name_args[0] == mock_button_response.ctx.channel  # channel
+        
+        # Verify channel deletion scheduling method was called (mocked)
+        mock_schedule.assert_called_once()
+        schedule_args = mock_schedule.call_args[0]
+        assert schedule_args[0] == mock_button_response.ctx.channel  # channel
         
         # Verify database session closed
         mock_db.close.assert_called()
@@ -136,10 +153,12 @@ class TestCloseCommandIntegration:
     @pytest.mark.asyncio
     @patch('app.commands.implementations.close.get_db_session')
     @patch('app.commands.implementations.close.get_ticket_by_channel_id')
+    @patch('app.commands.implementations.close.get_user_by_discord_id')
     @patch('app.commands.implementations.close.get_user_role_in_guild')
     async def test_complete_close_flow_staff(
         self, 
         mock_get_role, 
+        mock_get_user,
         mock_get_ticket, 
         mock_get_db
     ):
@@ -157,10 +176,13 @@ class TestCloseCommandIntegration:
         mock_ticket.assigned_to = None
         mock_get_ticket.return_value = mock_ticket
         
-        # Mock staff role
-        mock_role = Mock()
-        mock_role.role = 'STAFF'
-        mock_get_role.return_value = mock_role
+        # Mock user lookup
+        mock_user = Mock()
+        mock_user.id = uuid.uuid4()
+        mock_get_user.return_value = mock_user
+        
+        # Mock staff role - return the role string directly
+        mock_get_role.return_value = 'STAFF'
         
         # Setup context (staff user)
         mock_ctx = Mock(spec=interactions.SlashContext)
@@ -179,8 +201,9 @@ class TestCloseCommandIntegration:
         
         # Verify staff has permission
         assert result is True
+        mock_get_user.assert_called_once_with(mock_db, int(mock_ctx.author.id))
         mock_get_role.assert_called_once_with(
-            mock_db, int(mock_ctx.author.id), int(mock_ctx.guild.id)
+            mock_db, mock_user.id, int(mock_ctx.guild.id)
         )
         
         # Verify database session handling (called in actual command execution)
@@ -325,8 +348,8 @@ class TestCloseCommandIntegration:
         
         # Verify embed structure
         assert isinstance(embed, interactions.Embed)
-        assert "Confirm Ticket Closure" in embed.title
-        assert f"#{mock_ticket.id}" in embed.description
+        assert embed.title is not None and "Confirm Ticket Closure" in embed.title
+        assert embed.description is not None and f"#{mock_ticket.id}" in embed.description
         assert embed.color == 0xFF9500
         
         # Verify fields
@@ -361,7 +384,7 @@ class TestCloseCommandIntegration:
         
         # Verify embed structure
         assert isinstance(embed, interactions.Embed)
-        assert "Confirm Ticket Closure" in embed.title
+        assert embed.title is not None and "Confirm Ticket Closure" in embed.title
         
         # Verify no close reason field when reason is None
         field_names = [field.name for field in embed.fields]

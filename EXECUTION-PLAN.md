@@ -343,31 +343,31 @@
 - [x] Document permission structure and requirements
 
 ### Story E3-005: /close Command Handler
-- [ ] Create slash command definition for /close with optional reason parameter
-- [ ] Add ticket channel validation to ensure command used in ticket
-- [ ] Query database to get ticket information for current channel
-- [ ] Check user permissions to close ticket (creator or staff)
-- [ ] Validate closure reason if provided (3-200 characters)
-- [ ] Create confirmation embed with ticket details
-- [ ] Add close reason to confirmation if provided
-- [ ] Create confirmation buttons: "Close Ticket" and "Cancel"
-- [ ] Set button custom IDs with ticket ID for identification
-- [ ] Add 5-minute timeout for confirmation interaction
-- [ ] Handle button interaction for close confirmation
-- [ ] Call ticket update API to set status to CLOSED
-- [ ] Set closed_at timestamp and close_reason in database
-- [ ] Create audit log entry for closure action
-- [ ] Send closure notification embed to channel
-- [ ] Update channel permissions to read-only for users
-- [ ] Add "CLOSED" prefix to channel name
-- [ ] Schedule channel deletion after configured delay
+- [x] Create slash command definition for /close with optional reason parameter
+- [x] Add ticket channel validation to ensure command used in ticket
+- [x] Query database to get ticket information for current channel
+- [x] Check user permissions to close ticket (creator or staff)
+- [x] Validate closure reason if provided (3-200 characters)
+- [x] Create confirmation embed with ticket details
+- [x] Add close reason to confirmation if provided
+- [x] Create confirmation buttons: "Close Ticket" and "Cancel"
+- [x] Set button custom IDs with ticket ID for identification
+- [x] Add 5-minute timeout for confirmation interaction
+- [x] Handle button interaction for close confirmation
+- [x] Call ticket update API to set status to CLOSED
+- [x] Set closed_at timestamp and close_reason in database
+- [x] Create audit log entry for closure action
+- [x] Send closure notification embed to channel
+- [x] Update channel permissions to read-only for users
+- [x] Add "CLOSED" prefix to channel name
+- [x] Schedule channel deletion after configured delay
 - [ ] Generate transcript if auto-transcript is enabled
 - [ ] Send transcript link to creator via DM
 - [ ] Emit WebSocket event for dashboard updates
-- [ ] Write unit tests for permission validation
-- [ ] Write unit tests for confirmation flow
-- [ ] Write integration tests for complete closure process
-- [ ] Document close command usage and options
+- [x] Write unit tests for permission validation
+- [x] Write unit tests for confirmation flow
+- [x] Write integration tests for complete closure process
+- [x] Document close command usage and options
 
 ### Story E3-006: /add Command Handler
 - [ ] Create slash command definition for /add with user parameter
