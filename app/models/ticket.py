@@ -93,6 +93,9 @@ class Ticket(Base):
         Index('idx_tickets_created_at', 'created_at'),
     )
 
+    # Relationships
+    participants = relationship("TicketParticipant", back_populates="ticket", cascade="all, delete-orphan")
+
     def __init__(self, **kwargs):
         """Initialize ticket with default values."""
         if 'status' not in kwargs:

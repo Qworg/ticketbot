@@ -370,26 +370,26 @@
 - [x] Document close command usage and options
 
 ### Story E3-006: /add Command Handler
-- [ ] Create slash command definition for /add with user parameter
-- [ ] Add ticket channel validation
-- [ ] Add staff permission validation (only staff can add users)
-- [ ] Validate target user parameter (must be valid Discord user)
-- [ ] Check if target user is already in ticket
-- [ ] Query database for current ticket participants
-- [ ] Prevent adding user if already a participant
-- [ ] Add channel permissions for target user
-- [ ] Grant read_messages and send_messages permissions
-- [ ] Update ticket participants table in database
-- [ ] Create audit log entry for participant addition
-- [ ] Send notification embed to channel about new participant
-- [ ] Send DM to added user with ticket information
-- [ ] Include ticket reason and current status in DM
+- [x] Create slash command definition for /add with user parameter
+- [x] Add ticket channel validation
+- [x] Add staff permission validation (only staff can add users)
+- [x] Validate target user parameter (must be valid Discord user)
+- [x] Check if target user is already in ticket
+- [x] Query database for current ticket participants
+- [x] Prevent adding user if already a participant
+- [x] Add channel permissions for target user
+- [x] Grant read_messages and send_messages permissions
+- [x] Update ticket participants table in database
+- [x] Create audit log entry for participant addition
+- [x] Send notification embed to channel about new participant
+- [x] Send DM to added user with ticket information
+- [x] Include ticket reason and current status in DM
 - [ ] Emit WebSocket event for real-time updates
-- [ ] Write unit tests for permission validation
-- [ ] Write unit tests for duplicate participant prevention
-- [ ] Write unit tests for Discord permission updates
-- [ ] Write integration tests for complete add user flow
-- [ ] Document add command usage and restrictions
+- [x] Write unit tests for permission validation
+- [x] Write unit tests for duplicate participant prevention
+- [x] Write unit tests for Discord permission updates
+- [x] Write integration tests for complete add user flow
+- [x] Document add command usage and restrictions
 
 ### Story E3-007: /remove Command Handler
 - [ ] Create slash command definition for /remove with user parameter
