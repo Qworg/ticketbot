@@ -82,3 +82,7 @@ python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --cov=app --cov-report=term-missing --cov-report=html"
+markers = [
+    "integration: marks tests as integration tests (slower)",
+    "unit: marks tests as unit tests (fast)",
+]

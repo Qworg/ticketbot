@@ -392,25 +392,25 @@
 - [x] Document add command usage and restrictions
 
 ### Story E3-007: /remove Command Handler
-- [ ] Create slash command definition for /remove with user parameter
-- [ ] Add ticket channel validation
-- [ ] Add staff permission validation
-- [ ] Validate target user parameter
-- [ ] Check if target user is in ticket participants
-- [ ] Prevent removing ticket creator (special case)
-- [ ] Remove channel permissions for target user
-- [ ] Update ticket participants table to mark removed
-- [ ] Set removed_at timestamp in participants table
-- [ ] Create audit log entry for participant removal
-- [ ] Send notification embed about participant removal
-- [ ] Send DM to removed user about ticket removal
-- [ ] Handle case where user has already left server
+- [x] Create slash command definition for /remove with user parameter
+- [x] Add ticket channel validation
+- [x] Add staff permission validation
+- [x] Validate target user parameter
+- [x] Check if target user is in ticket participants
+- [x] Prevent removing ticket creator (special case)
+- [x] Remove channel permissions for target user
+- [x] Update ticket participants table to mark removed
+- [x] Set removed_at timestamp in participants table
+- [x] Create audit log entry for participant removal
+- [x] Send notification embed about participant removal
+- [x] Send DM to removed user about ticket removal
+- [x] Handle case where user has already left server
 - [ ] Emit WebSocket event for dashboard updates
-- [ ] Write unit tests for permission validation
-- [ ] Write unit tests for creator removal prevention
-- [ ] Write unit tests for non-participant removal attempts
-- [ ] Write integration tests for complete remove user flow
-- [ ] Document remove command usage and restrictions
+- [x] Write unit tests for permission validation
+- [x] Write unit tests for creator removal prevention
+- [x] Write unit tests for non-participant removal attempts
+- [x] Write integration tests for complete remove user flow
+- [x] Document remove command usage and restrictions
 
 ### Story E3-008: /claim Command Handler
 - [ ] Create slash command definition for /claim
