@@ -12,8 +12,8 @@ from app.commands.base import BaseCommand
 from app.commands.errors import CommandError, CommandCooldownError, CommandPermissionError
 
 
-class TestCommand(BaseCommand):
-    """Test command for unit testing."""
+class MockTestCommand(BaseCommand):
+    """Mock test command for unit testing."""
     
     def __init__(self, **kwargs):
         super().__init__(
@@ -40,7 +40,7 @@ class TestCommandRegistry:
     
     def test_register_command(self):
         """Test command registration."""
-        command = TestCommand()
+        command = MockTestCommand()
         self.registry.register_command(command)
         
         assert "test" in self.registry.commands
@@ -48,8 +48,8 @@ class TestCommandRegistry:
     
     def test_register_duplicate_command(self):
         """Test registering duplicate command name."""
-        command1 = TestCommand()
-        command2 = TestCommand()
+        command1 = MockTestCommand()
+        command2 = MockTestCommand()
         
         self.registry.register_command(command1)
         self.registry.register_command(command2)  # Should overwrite
@@ -58,8 +58,8 @@ class TestCommandRegistry:
     
     def test_list_commands(self):
         """Test listing registered commands."""
-        command1 = TestCommand()
-        command2 = TestCommand()
+        command1 = MockTestCommand()
+        command2 = MockTestCommand()
         command2.name = "test2"
         
         self.registry.register_command(command1)
@@ -73,7 +73,7 @@ class TestCommandRegistry:
     @pytest.mark.asyncio
     async def test_setup_slash_commands(self):
         """Test slash command setup."""
-        command = TestCommand()
+        command = MockTestCommand()
         self.registry.register_command(command)
         
         await self.registry.setup_slash_commands()
@@ -92,7 +92,7 @@ class TestCommandRegistry:
     
     def test_get_command_stats(self):
         """Test getting command statistics."""
-        command = TestCommand(cooldown_seconds=5.0, staff_only=True)
+        command = MockTestCommand(cooldown_seconds=5.0, staff_only=True)
         self.registry.register_command(command)
         
         stats = self.registry.get_command_stats()
@@ -117,7 +117,7 @@ class TestBaseCommand:
     @pytest.mark.asyncio
     async def test_execute_successful(self):
         """Test successful command execution."""
-        command = TestCommand()
+        command = MockTestCommand()
         
         with patch.object(command, 'can_execute', return_value=True):
             await command.execute(self.mock_ctx, arg1="value1")
@@ -128,7 +128,7 @@ class TestBaseCommand:
     @pytest.mark.asyncio
     async def test_execute_permission_error(self):
         """Test command execution with permission error."""
-        command = TestCommand()
+        command = MockTestCommand()
         
         with patch.object(command, 'can_execute', side_effect=CommandPermissionError("test permission")):
             await command.execute(self.mock_ctx)
@@ -142,7 +142,7 @@ class TestBaseCommand:
     @pytest.mark.asyncio
     async def test_execute_cooldown_error(self):
         """Test command execution with cooldown error."""
-        command = TestCommand()
+        command = MockTestCommand()
         
         with patch.object(command, 'can_execute', side_effect=CommandCooldownError(5.0)):
             await command.execute(self.mock_ctx)
@@ -153,7 +153,7 @@ class TestBaseCommand:
     @pytest.mark.asyncio
     async def test_execute_unexpected_error(self):
         """Test command execution with unexpected error."""
-        command = TestCommand()
+        command = MockTestCommand()
         
         with patch.object(command, 'can_execute', return_value=True):
             with patch.object(command, '_execute', side_effect=Exception("Test error")):
@@ -165,7 +165,7 @@ class TestBaseCommand:
     
     def test_cooldown_tracking(self):
         """Test cooldown tracking functionality."""
-        command = TestCommand(cooldown_seconds=10.0)
+        command = MockTestCommand(cooldown_seconds=10.0)
         user_id = 12345
         
         # Simulate command use
@@ -181,7 +181,7 @@ class TestBaseCommand:
     @patch('app.commands.base.User')
     def test_permission_checking_staff_only(self, mock_user_model, mock_get_db):
         """Test staff-only permission checking."""
-        command = TestCommand(staff_only=True)
+        command = MockTestCommand(staff_only=True)
         
         # Mock database session and user
         mock_db = Mock()
@@ -197,7 +197,7 @@ class TestBaseCommand:
     
     def test_cleanup_tracking(self):
         """Test cleanup of old tracking data."""
-        command = TestCommand(cooldown_seconds=10.0, rate_limit_per_minute=5)
+        command = MockTestCommand(cooldown_seconds=10.0, rate_limit_per_minute=5)
         
         import time
         current_time = time.time()

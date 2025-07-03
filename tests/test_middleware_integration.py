@@ -18,22 +18,22 @@ from app.database import get_db
 
 
 # Create test FastAPI app with protected endpoints
-test_app = FastAPI()
+app_for_tests = FastAPI()
 
 
-@test_app.get("/public")
+@app_for_tests.get("/public")
 async def public_endpoint():
     """Public endpoint that doesn't require authentication."""
     return {"message": "public"}
 
 
-@test_app.get("/protected")
+@app_for_tests.get("/protected")
 async def protected_endpoint(user_info=Depends(require_authentication())):
     """Protected endpoint that requires authentication."""
     return {"message": "protected", "user_id": user_info["user_id"]}
 
 
-@test_app.get("/user-info")
+@app_for_tests.get("/user-info")
 async def user_info_endpoint(user_info=Depends(get_current_user)):
     """Endpoint that uses the authentication middleware directly."""
     return {"authenticated": user_info.get("is_authenticated", False)}
@@ -51,14 +51,14 @@ class TestAuthenticationIntegration:
     def client(self, mock_db):
         """Create test client with mocked database dependency."""
         # Override the database dependency
-        test_app.dependency_overrides[get_db] = lambda: mock_db
+        app_for_tests.dependency_overrides[get_db] = lambda: mock_db
         
-        client = TestClient(test_app)
+        client = TestClient(app_for_tests)
         
         yield client
         
         # Clean up dependency overrides after test
-        test_app.dependency_overrides.clear()
+        app_for_tests.dependency_overrides.clear()
     
     @pytest.fixture
     def mock_user(self):
