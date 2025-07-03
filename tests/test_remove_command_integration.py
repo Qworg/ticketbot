@@ -30,6 +30,7 @@ class TestRemoveCommandIntegration:
     @pytest.mark.asyncio
     @patch("app.commands.implementations.remove.get_db_session")
     @patch("app.commands.implementations.remove.get_ticket_by_channel_id")
+    @patch("app.commands.implementations.remove.get_user_by_discord_id")
     @patch("app.commands.implementations.remove.remove_participant_from_ticket")
     @patch("app.commands.implementations.remove.is_participant_in_ticket")
     @patch("app.commands.implementations.remove.get_user_role_in_guild")
@@ -38,6 +39,7 @@ class TestRemoveCommandIntegration:
         mock_get_role,
         mock_is_participant,
         mock_remove_participant,
+        mock_get_user,
         mock_get_ticket,
         mock_get_db,
     ):
@@ -45,6 +47,11 @@ class TestRemoveCommandIntegration:
         # Setup mocks
         mock_db = Mock()
         mock_get_db.return_value = mock_db
+
+        # Mock author user for permission check
+        mock_author_user = Mock()
+        mock_author_user.id = "mock-user-uuid"
+        mock_get_user.return_value = mock_author_user
 
         # Create mock ticket
         mock_ticket = Mock(spec=Ticket)
@@ -66,7 +73,7 @@ class TestRemoveCommandIntegration:
 
         # Create mock context
         mock_ctx = Mock(spec=interactions.SlashContext)
-        mock_ctx.channel = Mock()
+        mock_ctx.channel = Mock(spec=interactions.GuildChannel)
         mock_ctx.channel.id = "123456789"
         mock_ctx.channel.edit_permission = AsyncMock()
         mock_ctx.channel.send = AsyncMock()
@@ -96,7 +103,8 @@ class TestRemoveCommandIntegration:
         # Verify database calls
         mock_get_db.assert_called_once()
         mock_get_ticket.assert_called_once_with(mock_db, 123456789)
-        mock_get_role.assert_called_once_with(mock_db, 555666777, 987654321)
+        mock_get_user.assert_called_once_with(mock_db, 555666777)
+        mock_get_role.assert_called_once_with(mock_db, "mock-user-uuid", 987654321)
         mock_is_participant.assert_called_once_with(mock_db, 123, 888999000)
         mock_remove_participant.assert_called_once_with(mock_db, 123, 888999000)
 
@@ -127,15 +135,21 @@ class TestRemoveCommandIntegration:
     @pytest.mark.asyncio
     @patch("app.commands.implementations.remove.get_db_session")
     @patch("app.commands.implementations.remove.get_ticket_by_channel_id")
+    @patch("app.commands.implementations.remove.get_user_by_discord_id")
     @patch("app.commands.implementations.remove.is_participant_in_ticket")
     @patch("app.commands.implementations.remove.get_user_role_in_guild")
     async def test_complete_remove_flow_admin(
-        self, mock_get_role, mock_is_participant, mock_get_ticket, mock_get_db
+        self, mock_get_role, mock_is_participant, mock_get_user, mock_get_ticket, mock_get_db
     ):
         """Test complete remove flow for admin removing participant."""
         # Setup mocks
         mock_db = Mock()
         mock_get_db.return_value = mock_db
+
+        # Mock author user for permission check
+        mock_author_user = Mock()
+        mock_author_user.id = "mock-admin-uuid"
+        mock_get_user.return_value = mock_author_user
 
         # Create mock ticket
         mock_ticket = Mock(spec=Ticket)
@@ -152,7 +166,7 @@ class TestRemoveCommandIntegration:
 
         # Create mock context
         mock_ctx = Mock(spec=interactions.SlashContext)
-        mock_ctx.channel = Mock()
+        mock_ctx.channel = Mock(spec=interactions.GuildChannel)
         mock_ctx.channel.id = "123456789"
         mock_ctx.guild = Mock()
         mock_ctx.guild.id = "987654321"
@@ -182,8 +196,9 @@ class TestRemoveCommandIntegration:
                         await self.command._execute(mock_ctx, user=mock_target_user)
 
                         # Verify admin can remove participants
+                        mock_get_user.assert_called_once_with(mock_db, 444555666)
                         mock_get_role.assert_called_once_with(
-                            mock_db, 444555666, 987654321
+                            mock_db, "mock-admin-uuid", 987654321
                         )
                         mock_is_participant.assert_called_once_with(
                             mock_db, 123, 888999000
@@ -197,14 +212,20 @@ class TestRemoveCommandIntegration:
     @pytest.mark.asyncio
     @patch("app.commands.implementations.remove.get_db_session")
     @patch("app.commands.implementations.remove.get_ticket_by_channel_id")
+    @patch("app.commands.implementations.remove.get_user_by_discord_id")
     @patch("app.commands.implementations.remove.get_user_role_in_guild")
     async def test_integration_permission_denied_user(
-        self, mock_get_role, mock_get_ticket, mock_get_db
+        self, mock_get_role, mock_get_user, mock_get_ticket, mock_get_db
     ):
         """Test integration with permission system - regular user denied."""
         # Setup mocks
         mock_db = Mock()
         mock_get_db.return_value = mock_db
+
+        # Mock author user for permission check
+        mock_author_user = Mock()
+        mock_author_user.id = "mock-user-uuid"
+        mock_get_user.return_value = mock_author_user
 
         # Create mock ticket
         mock_ticket = Mock(spec=Ticket)
@@ -232,7 +253,8 @@ class TestRemoveCommandIntegration:
         await self.command._execute(mock_ctx, user=mock_target_user)
 
         # Verify permission check
-        mock_get_role.assert_called_once_with(mock_db, 777888999, 987654321)
+        mock_get_user.assert_called_once_with(mock_db, 777888999)
+        mock_get_role.assert_called_once_with(mock_db, "mock-user-uuid", 987654321)
 
         # Verify permission denied
         mock_ctx.send.assert_called_once()
@@ -295,6 +317,7 @@ class TestRemoveCommandIntegration:
     @pytest.mark.asyncio
     @patch("app.commands.implementations.remove.get_db_session")
     @patch("app.commands.implementations.remove.get_ticket_by_channel_id")
+    @patch("app.commands.implementations.remove.get_user_by_discord_id")
     @patch("app.commands.implementations.remove.is_participant_in_ticket")
     @patch("app.commands.implementations.remove.remove_participant_from_ticket")
     @patch("app.commands.implementations.remove.get_user_role_in_guild")
@@ -303,6 +326,7 @@ class TestRemoveCommandIntegration:
         mock_get_role,
         mock_remove_participant,
         mock_is_participant,
+        mock_get_user,
         mock_get_ticket,
         mock_get_db,
     ):
@@ -310,6 +334,11 @@ class TestRemoveCommandIntegration:
         # Setup mocks
         mock_db = Mock()
         mock_get_db.return_value = mock_db
+
+        # Mock author user for permission check
+        mock_author_user = Mock()
+        mock_author_user.id = "mock-user-uuid"
+        mock_get_user.return_value = mock_author_user
 
         # Create mock ticket
         mock_ticket = Mock(spec=Ticket)
@@ -355,6 +384,7 @@ class TestRemoveCommandIntegration:
     @pytest.mark.asyncio
     @patch("app.commands.implementations.remove.get_db_session")
     @patch("app.commands.implementations.remove.get_ticket_by_channel_id")
+    @patch("app.commands.implementations.remove.get_user_by_discord_id")
     @patch("app.commands.implementations.remove.is_participant_in_ticket")
     @patch("app.commands.implementations.remove.remove_participant_from_ticket")
     @patch("app.commands.implementations.remove.get_user_role_in_guild")
@@ -363,6 +393,7 @@ class TestRemoveCommandIntegration:
         mock_get_role,
         mock_remove_participant,
         mock_is_participant,
+        mock_get_user,
         mock_get_ticket,
         mock_get_db,
     ):
@@ -370,6 +401,11 @@ class TestRemoveCommandIntegration:
         # Setup mocks
         mock_db = Mock()
         mock_get_db.return_value = mock_db
+
+        # Mock author user for permission check
+        mock_author_user = Mock()
+        mock_author_user.id = "mock-user-uuid"
+        mock_get_user.return_value = mock_author_user
 
         # Create mock ticket
         mock_ticket = Mock(spec=Ticket)
@@ -390,7 +426,7 @@ class TestRemoveCommandIntegration:
 
         # Create mock context with failing channel permissions
         mock_ctx = Mock(spec=interactions.SlashContext)
-        mock_ctx.channel = Mock()
+        mock_ctx.channel = Mock(spec=interactions.GuildChannel)
         mock_ctx.channel.id = "123456789"
         mock_ctx.channel.edit_permission = AsyncMock(
             side_effect=Exception("Permission denied")

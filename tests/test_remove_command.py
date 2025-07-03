@@ -25,7 +25,7 @@ class TestRemoveCommand:
 
         # Mock context
         self.mock_ctx = Mock(spec=interactions.SlashContext)
-        self.mock_ctx.channel = Mock()
+        self.mock_ctx.channel = Mock(spec=interactions.GuildChannel)
         self.mock_ctx.channel.id = "123456789"
         self.mock_ctx.guild = Mock()
         self.mock_ctx.guild.id = "987654321"
@@ -242,6 +242,10 @@ class TestRemoveCommand:
         self.mock_target_user.fetch_dm.return_value = mock_dm_channel
         mock_dm_channel.send = AsyncMock()
 
+        # Mock author user for permission check
+        mock_author_user = Mock()
+        mock_author_user.id = "mock-user-uuid"
+
         with patch(
             "app.commands.implementations.remove.get_db_session", return_value=mock_db
         ):
@@ -250,56 +254,64 @@ class TestRemoveCommand:
                 return_value=self.mock_ticket,
             ):
                 with patch(
-                    "app.commands.implementations.remove.get_user_role_in_guild",
-                    return_value="STAFF",
+                    "app.commands.implementations.remove.get_user_by_discord_id",
+                    return_value=mock_author_user,
                 ):
                     with patch(
-                        "app.commands.implementations.remove.is_participant_in_ticket",
-                        return_value=True,
+                        "app.commands.implementations.remove.get_user_role_in_guild",
+                        return_value="STAFF",
                     ):
                         with patch(
-                            "app.commands.implementations.remove.remove_participant_from_ticket",
+                            "app.commands.implementations.remove.is_participant_in_ticket",
                             return_value=True,
                         ):
-                            with patch.object(
-                                self.command, "_remove_channel_permissions"
-                            ) as mock_remove_perms:
+                            with patch(
+                                "app.commands.implementations.remove.remove_participant_from_ticket",
+                                return_value=True,
+                            ):
                                 with patch.object(
-                                    self.command,
-                                    "_send_participant_removed_notification",
-                                ) as mock_notify:
+                                    self.command, "_remove_channel_permissions"
+                                ) as mock_remove_perms:
                                     with patch.object(
-                                        self.command, "_send_dm_to_removed_user"
-                                    ) as mock_dm:
-                                        await self.command._execute(
-                                            self.mock_ctx, user=self.mock_target_user
-                                        )
+                                        self.command,
+                                        "_send_participant_removed_notification",
+                                    ) as mock_notify:
+                                        with patch.object(
+                                            self.command, "_send_dm_to_removed_user"
+                                        ) as mock_dm:
+                                            await self.command._execute(
+                                                self.mock_ctx, user=self.mock_target_user
+                                            )
 
-                                        # Check that defer was called
-                                        self.mock_ctx.defer.assert_called_once_with(
-                                            ephemeral=True
-                                        )
+                                            # Check that defer was called
+                                            self.mock_ctx.defer.assert_called_once_with(
+                                                ephemeral=True
+                                            )
 
-                                        # Check that removal functions were called
-                                        mock_remove_perms.assert_called_once()
-                                        mock_notify.assert_called_once()
-                                        mock_dm.assert_called_once()
+                                            # Check that removal functions were called
+                                            mock_remove_perms.assert_called_once()
+                                            mock_notify.assert_called_once()
+                                            mock_dm.assert_called_once()
 
-                                        # Check success response
-                                        self.mock_ctx.edit_original_response.assert_called_once()
-                                        call_args = self.mock_ctx.edit_original_response.call_args[
-                                            1
-                                        ]
-                                        assert (
-                                            "✅ Successfully removed"
-                                            in call_args["content"]
-                                        )
+                                            # Check success response
+                                            self.mock_ctx.edit_original_response.assert_called_once()
+                                            call_args = self.mock_ctx.edit_original_response.call_args[
+                                                1
+                                            ]
+                                            assert (
+                                                "✅ Successfully removed"
+                                                in call_args["content"]
+                                            )
 
     @pytest.mark.asyncio
     async def test_execute_removal_failure(self):
         """Test when database removal fails."""
         mock_db = Mock()
 
+        # Mock author user for permission check
+        mock_author_user = Mock()
+        mock_author_user.id = "mock-user-uuid"
+
         with patch(
             "app.commands.implementations.remove.get_db_session", return_value=mock_db
         ):
@@ -308,36 +320,44 @@ class TestRemoveCommand:
                 return_value=self.mock_ticket,
             ):
                 with patch(
-                    "app.commands.implementations.remove.get_user_role_in_guild",
-                    return_value="STAFF",
+                    "app.commands.implementations.remove.get_user_by_discord_id",
+                    return_value=mock_author_user,
                 ):
                     with patch(
-                        "app.commands.implementations.remove.is_participant_in_ticket",
-                        return_value=True,
+                        "app.commands.implementations.remove.get_user_role_in_guild",
+                        return_value="STAFF",
                     ):
                         with patch(
-                            "app.commands.implementations.remove.remove_participant_from_ticket",
-                            return_value=False,
+                            "app.commands.implementations.remove.is_participant_in_ticket",
+                            return_value=True,
                         ):
-                            await self.command._execute(
-                                self.mock_ctx, user=self.mock_target_user
-                            )
+                            with patch(
+                                "app.commands.implementations.remove.remove_participant_from_ticket",
+                                return_value=False,
+                            ):
+                                await self.command._execute(
+                                    self.mock_ctx, user=self.mock_target_user
+                                )
 
-                            # Check that defer was called
-                            self.mock_ctx.defer.assert_called_once_with(ephemeral=True)
+                                # Check that defer was called
+                                self.mock_ctx.defer.assert_called_once_with(ephemeral=True)
 
-                            # Check error response
-                            self.mock_ctx.edit_original_response.assert_called_once()
-                            call_args = self.mock_ctx.edit_original_response.call_args[
-                                1
-                            ]
-                            assert "❌ Failed to remove" in call_args["content"]
+                                # Check error response
+                                self.mock_ctx.edit_original_response.assert_called_once()
+                                call_args = self.mock_ctx.edit_original_response.call_args[
+                                    1
+                                ]
+                                assert "❌ Failed to remove" in call_args["content"]
 
     @pytest.mark.asyncio
     async def test_execute_exception_handling(self):
         """Test exception handling during execution."""
         mock_db = Mock()
 
+        # Mock author user for permission check
+        mock_author_user = Mock()
+        mock_author_user.id = "mock-user-uuid"
+
         with patch(
             "app.commands.implementations.remove.get_db_session", return_value=mock_db
         ):
@@ -346,33 +366,37 @@ class TestRemoveCommand:
                 return_value=self.mock_ticket,
             ):
                 with patch(
-                    "app.commands.implementations.remove.get_user_role_in_guild",
-                    return_value="STAFF",
+                    "app.commands.implementations.remove.get_user_by_discord_id",
+                    return_value=mock_author_user,
                 ):
                     with patch(
-                        "app.commands.implementations.remove.is_participant_in_ticket",
-                        return_value=True,
+                        "app.commands.implementations.remove.get_user_role_in_guild",
+                        return_value="STAFF",
                     ):
                         with patch(
-                            "app.commands.implementations.remove.remove_participant_from_ticket",
-                            side_effect=Exception("Database error"),
+                            "app.commands.implementations.remove.is_participant_in_ticket",
+                            return_value=True,
                         ):
-                            await self.command._execute(
-                                self.mock_ctx, user=self.mock_target_user
-                            )
+                            with patch(
+                                "app.commands.implementations.remove.remove_participant_from_ticket",
+                                side_effect=Exception("Database error"),
+                            ):
+                                await self.command._execute(
+                                    self.mock_ctx, user=self.mock_target_user
+                                )
 
-                            # Check that defer was called
-                            self.mock_ctx.defer.assert_called_once_with(ephemeral=True)
+                                # Check that defer was called
+                                self.mock_ctx.defer.assert_called_once_with(ephemeral=True)
 
-                            # Check error response
-                            self.mock_ctx.edit_original_response.assert_called_once()
-                            call_args = self.mock_ctx.edit_original_response.call_args[
-                                1
-                            ]
-                            assert (
-                                "❌ An error occurred while removing the user"
-                                in call_args["content"]
-                            )
+                                # Check error response
+                                self.mock_ctx.edit_original_response.assert_called_once()
+                                call_args = self.mock_ctx.edit_original_response.call_args[
+                                    1
+                                ]
+                                assert (
+                                    "❌ An error occurred while removing the user"
+                                    in call_args["content"]
+                                )
 
     @pytest.mark.asyncio
     async def test_remove_channel_permissions(self):

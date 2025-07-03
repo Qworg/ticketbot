@@ -151,9 +151,10 @@ class RemoveCommand(BaseCommand):
                 )
 
                 if not removal_success:
-                    await ctx.send(
-                        content=f"❌ Failed to remove {target_user.mention} from the ticket.",
-                        ephemeral=True
+                    # Cast to Any to bypass typing issues  
+                    ctx_any: Any = ctx
+                    await ctx_any.edit_original_response(
+                        content=f"❌ Failed to remove {target_user.mention} from the ticket."
                     )
                     return
 
@@ -177,9 +178,9 @@ class RemoveCommand(BaseCommand):
                 await self._send_dm_to_removed_user(target_user, ticket, ctx.guild)
 
                 # Send confirmation to command user
-                await ctx.send(
-                    content=f"✅ Successfully removed {target_user.mention} from the ticket.",
-                    ephemeral=True
+                ctx_any: Any = ctx
+                await ctx_any.edit_original_response(
+                    content=f"✅ Successfully removed {target_user.mention} from the ticket."
                 )
 
                 logger.info(
@@ -187,18 +188,18 @@ class RemoveCommand(BaseCommand):
                 )
 
             except ValueError as e:
-                await ctx.send(
-                    content=f"❌ Error removing user: {str(e)}",
-                    ephemeral=True
+                ctx_any: Any = ctx
+                await ctx_any.edit_original_response(
+                    content=f"❌ Error removing user: {str(e)}"
                 )
                 return
             except Exception as e:
                 logger.error(
                     f"Failed to remove user {target_user_id} from ticket {ticket_id_value}: {e}"
                 )
-                await ctx.send(
-                    content="❌ An error occurred while removing the user. Please try again.",
-                    ephemeral=True
+                ctx_any: Any = ctx
+                await ctx_any.edit_original_response(
+                    content="❌ An error occurred while removing the user. Please try again."
                 )
                 return
 
@@ -218,11 +219,20 @@ class RemoveCommand(BaseCommand):
             user: User to revoke permissions from
         """
         try:
-            # TODO: Implement permission removal when interactions library typing is fixed
-            # For now, we'll skip permission cleanup as the main functionality works
-            logger.info(
-                f"Skipped channel permission removal for user {user.id} in channel {channel.id} - feature disabled due to library limitations"
-            )
+            # Cast to Any to bypass typing issues
+            channel_any: Any = channel
+            if hasattr(channel_any, 'edit_permission'):
+                await channel_any.edit_permission(
+                    target=user,
+                    allow=None,
+                    deny=None,
+                    reason="Removed from ticket by staff",
+                )
+                logger.info(
+                    f"Removed channel permissions for user {user.id} in channel {channel.id}"
+                )
+            else:
+                logger.warning(f"Channel {channel.id} does not support permission editing")
 
         except Exception as e:
             logger.error(
