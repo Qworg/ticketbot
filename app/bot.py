@@ -23,6 +23,7 @@ from app.commands.implementations.ticket import TicketCommand
 from app.commands.implementations.close import CloseCommand
 from app.commands.implementations.add import AddCommand
 from app.commands.implementations.remove import RemoveCommand
+from app.commands.implementations.claim import ClaimCommand
 
 # Load environment variables
 load_dotenv()
@@ -76,6 +77,7 @@ class TicketBot:
         self.command_registry.register_command(CloseCommand())
         self.command_registry.register_command(AddCommand())
         self.command_registry.register_command(RemoveCommand())
+        self.command_registry.register_command(ClaimCommand())
         
         # Add more commands here as they are implemented
         logger.info(f"Registered {len(self.command_registry.commands)} commands")

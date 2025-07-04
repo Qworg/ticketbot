@@ -413,25 +413,25 @@
 - [x] Document remove command usage and restrictions
 
 ### Story E3-008: /claim Command Handler
-- [ ] Create slash command definition for /claim
-- [ ] Add ticket channel validation
-- [ ] Add staff permission validation
-- [ ] Query database for current ticket assignment status
-- [ ] Check if ticket is already assigned to another staff member
-- [ ] Prevent users from claiming their own tickets
-- [ ] Call ticket assignment API endpoint
-- [ ] Update ticket assigned_to field with claiming user
-- [ ] Set ticket status to IN_PROGRESS if currently OPEN
-- [ ] Create audit log entry for claim action
-- [ ] Send confirmation embed with claimer information
-- [ ] Update channel topic to show assigned staff
-- [ ] Send notification to ticket creator about assignment
+- [x] Create slash command definition for /claim
+- [x] Add ticket channel validation
+- [x] Add staff permission validation
+- [x] Query database for current ticket assignment status
+- [x] Check if ticket is already assigned to another staff member
+- [x] Prevent users from claiming their own tickets
+- [x] Call ticket assignment API endpoint
+- [x] Update ticket assigned_to field with claiming user
+- [x] Set ticket status to IN_PROGRESS if currently OPEN
+- [x] Create audit log entry for claim action
+- [x] Send confirmation embed with claimer information
+- [x] Update channel topic to show assigned staff
+- [x] Send notification to ticket creator about assignment
 - [ ] Emit WebSocket event for real-time updates
-- [ ] Add error handling for already assigned tickets
-- [ ] Write unit tests for assignment validation
-- [ ] Write unit tests for self-claim prevention
-- [ ] Write integration tests for claim process
-- [ ] Document claim command behavior and requirements
+- [x] Add error handling for already assigned tickets
+- [x] Write unit tests for assignment validation
+- [x] Write unit tests for self-claim prevention
+- [x] Write integration tests for claim process
+- [x] Document claim command behavior and requirements
 
 ### Story E3-009: /rename Command Handler
 - [ ] Create slash command definition for /rename with new_name parameter
