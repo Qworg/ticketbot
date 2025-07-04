@@ -180,7 +180,7 @@ class ClaimCommand(BaseCommand):
                     await self._send_claim_notification_to_creator(ctx, ticket, ctx.author)
                     
                     # Send success response to command user
-                    await ctx.edit_original_response(
+                    await ctx.edit(
                         content=f"✅ Successfully claimed ticket #{ticket_id_value}."
                     )
                     
@@ -188,28 +188,28 @@ class ClaimCommand(BaseCommand):
                     
                 elif response.status_code == 403:
                     error_detail = response.json().get("detail", "Insufficient permissions")
-                    await ctx.edit_original_response(
+                    await ctx.edit(
                         content=f"❌ {error_detail}"
                     )
                 elif response.status_code == 409:
                     error_detail = response.json().get("detail", "Ticket cannot be claimed")
-                    await ctx.edit_original_response(
+                    await ctx.edit(
                         content=f"❌ {error_detail}"
                     )
                 else:
-                    await ctx.edit_original_response(
+                    await ctx.edit(
                         content="❌ Failed to claim ticket. Please try again later."
                     )
                     logger.error(f"API claim request failed with status {response.status_code}: {response.text}")
                 
             except httpx.RequestError as e:
                 logger.error(f"Failed to make claim API request: {e}")
-                await ctx.edit_original_response(
+                await ctx.edit(
                     content="❌ Failed to claim ticket due to connection error. Please try again."
                 )
             except Exception as e:
                 logger.error(f"Unexpected error claiming ticket {ticket_id_value}: {e}")
-                await ctx.edit_original_response(
+                await ctx.edit(
                     content="❌ An unexpected error occurred while claiming the ticket."
                 )
         
@@ -289,14 +289,22 @@ class ClaimCommand(BaseCommand):
             
             # Try to get the creator member
             try:
+                if not ctx.guild:
+                    logger.warning("Guild context not available for creator notification")
+                    return
                 creator = await ctx.guild.fetch_member(creator_id)
+                if not creator:
+                    logger.warning(f"Could not find creator member {creator_id}")
+                    return
             except:
                 logger.warning(f"Could not fetch creator member {creator_id}")
                 return
             
+            guild_name = ctx.guild.name if ctx.guild else "Unknown Server"
+            
             embed = interactions.Embed(
                 title="🎫 Ticket Assignment Update",
-                description=f"Your ticket **#{getattr(ticket, 'id')}** in **{ctx.guild.name}** has been assigned to a staff member.",
+                description=f"Your ticket **#{getattr(ticket, 'id')}** in **{guild_name}** has been assigned to a staff member.",
                 color=0x007BFF,  # Blue
                 timestamp=interactions.Timestamp.now()
             )
@@ -322,14 +330,13 @@ class ClaimCommand(BaseCommand):
                 )
             
             embed.set_footer(
-                text=f"Ticket Bot • {ctx.guild.name}",
+                text=f"Ticket Bot • {guild_name}",
                 icon_url="https://cdn.discordapp.com/embed/avatars/0.png"
             )
             
             # Try to send DM to creator
             try:
-                dm_channel = await creator.fetch_dm(force=False)
-                await dm_channel.send(embed=embed)
+                await creator.send(embed=embed)
                 logger.info(f"Sent claim notification DM to ticket creator {creator_id}")
             except:
                 logger.warning(f"Could not send DM to ticket creator {creator_id}")
