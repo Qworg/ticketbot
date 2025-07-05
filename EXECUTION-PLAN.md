@@ -434,23 +434,23 @@
 - [x] Document claim command behavior and requirements
 
 ### Story E3-009: /rename Command Handler
-- [ ] Create slash command definition for /rename with new_name parameter
-- [ ] Add ticket channel validation
-- [ ] Add staff permission validation (staff only command)
-- [ ] Validate new name parameter (3-50 characters, appropriate content)
-- [ ] Sanitize new name for Discord channel naming rules
-- [ ] Remove special characters and spaces from name
-- [ ] Create new channel name with "ticket-" prefix
-- [ ] Update Discord channel name using API
-- [ ] Create audit log entry for rename action
-- [ ] Include old name and new name in audit log
-- [ ] Send confirmation embed with old and new names
-- [ ] Handle Discord API errors for name changes
-- [ ] Add rate limiting to prevent rename spam
-- [ ] Write unit tests for name validation and sanitization
-- [ ] Write unit tests for permission checking
-- [ ] Write integration tests for channel renaming
-- [ ] Document rename command usage and naming rules
+- [x] Create slash command definition for /rename with new_name parameter
+- [x] Add ticket channel validation
+- [x] Add staff permission validation (staff only command)
+- [x] Validate new name parameter (3-50 characters, appropriate content)
+- [x] Sanitize new name for Discord channel naming rules
+- [x] Remove special characters and spaces from name
+- [x] Create new channel name with "ticket-" prefix
+- [x] Update Discord channel name using API
+- [x] Create audit log entry for rename action
+- [x] Include old name and new name in audit log
+- [x] Send confirmation embed with old and new names
+- [x] Handle Discord API errors for name changes
+- [x] Add rate limiting to prevent rename spam
+- [x] Write unit tests for name validation and sanitization
+- [x] Write unit tests for permission checking
+- [x] Write integration tests for channel renaming
+- [x] Document rename command usage and naming rules
 
 ### Story E3-010: /help Command Handler
 - [ ] Create slash command definition for /help
