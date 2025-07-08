@@ -213,7 +213,7 @@ class TestHelpCommand:
         assert embed.title == "📋 Command: /claim"
 
     @patch('app.commands.implementations.help.get_command_registry')
-    @patch('app.commands.implementations.help.get_db_session')
+    @patch('app.database.get_db_session')
     async def test_execute_default_help(self, mock_db_session, mock_get_registry, help_command, mock_context, mock_registry):
         """Test executing help command with default parameters."""
         # Setup mocks
@@ -232,7 +232,7 @@ class TestHelpCommand:
         assert 'components' in call_args[1]
 
     @patch('app.commands.implementations.help.get_command_registry')
-    @patch('app.commands.implementations.help.get_db_session')
+    @patch('app.database.get_db_session')
     async def test_execute_help_with_category(self, mock_db_session, mock_get_registry, help_command, mock_context, mock_registry):
         """Test executing help command with category parameter."""
         # Setup mocks
@@ -251,7 +251,7 @@ class TestHelpCommand:
         assert 'components' in call_args[1]
 
     @patch('app.commands.implementations.help.get_command_registry')
-    @patch('app.commands.implementations.help.get_db_session')
+    @patch('app.database.get_db_session')
     async def test_execute_help_with_command(self, mock_db_session, mock_get_registry, help_command, mock_context, mock_registry):
         """Test executing help command with command parameter."""
         # Setup mocks
@@ -269,7 +269,7 @@ class TestHelpCommand:
         assert 'embed' in call_args[1]
 
     @patch('app.commands.implementations.help.get_command_registry')
-    @patch('app.commands.implementations.help.get_db_session')
+    @patch('app.database.get_db_session')
     async def test_execute_help_with_invalid_command(self, mock_db_session, mock_get_registry, help_command, mock_context, mock_registry):
         """Test executing help command with invalid command parameter."""
         # Setup mocks
@@ -288,7 +288,7 @@ class TestHelpCommand:
         assert embed.title == "❌ Command Not Found"
 
     @patch('app.commands.implementations.help.get_command_registry')
-    @patch('app.commands.implementations.help.get_db_session')
+    @patch('app.database.get_db_session')
     async def test_handle_button_interaction(self, mock_db_session, mock_get_registry, help_command, mock_component_context, mock_registry):
         """Test handling button interactions."""
         # Setup mocks
