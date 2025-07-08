@@ -95,6 +95,7 @@ class Ticket(Base):
 
     # Relationships
     participants = relationship("TicketParticipant", back_populates="ticket", cascade="all, delete-orphan")
+    messages = relationship("Message", back_populates="ticket", cascade="all, delete-orphan")
 
     def __init__(self, **kwargs):
         """Initialize ticket with default values."""

@@ -473,25 +473,25 @@
 ## Epic 4: Message Synchronization (E4)
 
 ### Story E4-001: Message Database Model
-- [ ] Create messages table with all required columns
-- [ ] Add id column as BIGINT PRIMARY KEY (Discord message ID)
-- [ ] Add ticket_id column as INTEGER with foreign key to tickets table
-- [ ] Add author_id column as BIGINT for message author Discord ID
-- [ ] Add content column as TEXT for message content
-- [ ] Add attachments column as JSONB for file attachments metadata
-- [ ] Add is_staff_only column as BOOLEAN for private staff messages
-- [ ] Add created_at column as TIMESTAMP for message timestamp
-- [ ] Add edited_at column as TIMESTAMP nullable for edit tracking
-- [ ] Add is_deleted column as BOOLEAN for soft deletion
-- [ ] Create foreign key constraint to tickets table with CASCADE delete
-- [ ] Create index on (ticket_id, created_at) for message ordering
-- [ ] Create index on author_id for user message queries
-- [ ] Create index on is_staff_only for filtering
-- [ ] Write database migration script for messages table
-- [ ] Write rollback migration for messages table
-- [ ] Add database constraints for required fields
-- [ ] Write unit tests for message model validation
-- [ ] Document messages table schema and relationships
+- [x] Create messages table with all required columns
+- [x] Add id column as BIGINT PRIMARY KEY (Discord message ID)
+- [x] Add ticket_id column as INTEGER with foreign key to tickets table
+- [x] Add author_id column as BIGINT for message author Discord ID
+- [x] Add content column as TEXT for message content
+- [x] Add attachments column as JSONB for file attachments metadata
+- [x] Add is_staff_only column as BOOLEAN for private staff messages
+- [x] Add created_at column as TIMESTAMP for message timestamp
+- [x] Add edited_at column as TIMESTAMP nullable for edit tracking
+- [x] Add is_deleted column as BOOLEAN for soft deletion
+- [x] Create foreign key constraint to tickets table with CASCADE delete
+- [x] Create index on (ticket_id, created_at) for message ordering
+- [x] Create index on author_id for user message queries
+- [x] Create index on is_staff_only for filtering
+- [x] Write database migration script for messages table
+- [x] Write rollback migration for messages table
+- [x] Add database constraints for required fields
+- [x] Write unit tests for message model validation
+- [x] Document messages table schema and relationships
 
 ### Story E4-002: Discord Message Listener
 - [ ] Create message create event listener for Discord bot
