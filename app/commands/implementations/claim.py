@@ -180,7 +180,7 @@ class ClaimCommand(BaseCommand):
                     await self._send_claim_notification_to_creator(ctx, ticket, ctx.author)
                     
                     # Send success response to command user
-                    await ctx.edit(
+                    await ctx.edit_original_response(
                         content=f"✅ Successfully claimed ticket #{ticket_id_value}."
                     )
                     
@@ -188,28 +188,28 @@ class ClaimCommand(BaseCommand):
                     
                 elif response.status_code == 403:
                     error_detail = response.json().get("detail", "Insufficient permissions")
-                    await ctx.edit(
+                    await ctx.edit_original_response(
                         content=f"❌ {error_detail}"
                     )
                 elif response.status_code == 409:
                     error_detail = response.json().get("detail", "Ticket cannot be claimed")
-                    await ctx.edit(
+                    await ctx.edit_original_response(
                         content=f"❌ {error_detail}"
                     )
                 else:
-                    await ctx.edit(
+                    await ctx.edit_original_response(
                         content="❌ Failed to claim ticket. Please try again later."
                     )
                     logger.error(f"API claim request failed with status {response.status_code}: {response.text}")
                 
             except httpx.RequestError as e:
                 logger.error(f"Failed to make claim API request: {e}")
-                await ctx.edit(
+                await ctx.edit_original_response(
                     content="❌ Failed to claim ticket due to connection error. Please try again."
                 )
             except Exception as e:
                 logger.error(f"Unexpected error claiming ticket {ticket_id_value}: {e}")
-                await ctx.edit(
+                await ctx.edit_original_response(
                     content="❌ An unexpected error occurred while claiming the ticket."
                 )
         
@@ -336,7 +336,8 @@ class ClaimCommand(BaseCommand):
             
             # Try to send DM to creator
             try:
-                await creator.send(embed=embed)
+                dm_channel = await creator.fetch_dm(force=False)
+                await dm_channel.send(embed=embed)
                 logger.info(f"Sent claim notification DM to ticket creator {creator_id}")
             except:
                 logger.warning(f"Could not send DM to ticket creator {creator_id}")
