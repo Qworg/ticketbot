@@ -453,22 +453,22 @@
 - [x] Document rename command usage and naming rules
 
 ### Story E3-010: /help Command Handler
-- [ ] Create slash command definition for /help
-- [ ] Create comprehensive help embed with all available commands
-- [ ] Group commands by category (User Commands, Staff Commands)
-- [ ] Include command syntax and parameter descriptions
-- [ ] Add usage examples for each command
-- [ ] Show different help content based on user permissions
-- [ ] Hide staff commands from regular users
-- [ ] Add bot information and version details
-- [ ] Include links to documentation and support
-- [ ] Add troubleshooting tips for common issues
-- [ ] Create interactive help with reaction navigation
-- [ ] Add command aliases and shortcuts if applicable
-- [ ] Make help content configurable per guild
-- [ ] Write unit tests for help content generation
-- [ ] Write unit tests for permission-based help filtering
-- [ ] Document help system customization options
+- [x] Create slash command definition for /help
+- [x] Create comprehensive help embed with all available commands
+- [x] Group commands by category (User Commands, Staff Commands)
+- [x] Include command syntax and parameter descriptions
+- [x] Add usage examples for each command
+- [x] Show different help content based on user permissions
+- [x] Hide staff commands from regular users
+- [x] Add bot information and version details
+- [x] Include links to documentation and support
+- [x] Add troubleshooting tips for common issues
+- [x] Create interactive help with reaction navigation
+- [x] Add command aliases and shortcuts if applicable
+- [x] Make help content configurable per guild
+- [x] Write unit tests for help content generation
+- [x] Write unit tests for permission-based help filtering
+- [x] Document help system customization options
 
 ## Epic 4: Message Synchronization (E4)
 
