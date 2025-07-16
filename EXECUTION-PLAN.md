@@ -493,27 +493,27 @@
 - [x] Write unit tests for message model validation
 - [x] Document messages table schema and relationships
 
-### Story E4-002: Discord Message Listener
-- [ ] Create message create event listener for Discord bot
-- [ ] Filter messages to only process ticket channel messages
-- [ ] Query database to verify channel is a ticket channel
-- [ ] Extract message content, author, and timestamp
-- [ ] Process message attachments and store metadata
-- [ ] Handle different message types (text, embeds, files)
-- [ ] Determine if message is staff-only based on author role
-- [ ] Call database function to save message
-- [ ] Include message ID, ticket ID, and all metadata
-- [ ] Handle message save failures gracefully
-- [ ] Add rate limiting to prevent database spam
-- [ ] Create message edit event listener
-- [ ] Update existing message record when edited
-- [ ] Create message delete event listener
-- [ ] Soft delete message records instead of hard delete
-- [ ] Log message events for audit purposes
-- [ ] Write unit tests for message filtering
-- [ ] Write unit tests for message data extraction
-- [ ] Write integration tests for database saving
-- [ ] Document message event handling flow
+### Story E4-002: Discord Message Listener ✅ COMPLETED
+- [x] Create message create event listener for Discord bot
+- [x] Filter messages to only process ticket channel messages
+- [x] Query database to verify channel is a ticket channel
+- [x] Extract message content, author, and timestamp
+- [x] Process message attachments and store metadata
+- [x] Handle different message types (text, embeds, files)
+- [x] Determine if message is staff-only based on author role
+- [x] Call database function to save message
+- [x] Include message ID, ticket ID, and all metadata
+- [x] Handle message save failures gracefully
+- [x] Add rate limiting to prevent database spam
+- [x] Create message edit event listener
+- [x] Update existing message record when edited
+- [x] Create message delete event listener
+- [x] Soft delete message records instead of hard delete
+- [x] Log message events for audit purposes
+- [x] Write unit tests for message filtering
+- [x] Write unit tests for message data extraction
+- [x] Write integration tests for database saving
+- [x] Document message event handling flow
 
 ### Story E4-003: WebSocket Server Setup
 - [ ] Install fastapi-websocket dependencies

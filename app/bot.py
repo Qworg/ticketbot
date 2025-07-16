@@ -9,7 +9,8 @@ import asyncio
 import logging
 import signal
 import sys
-from typing import Optional
+import time
+from typing import Optional, Dict, List
 
 import interactions
 from dotenv import load_dotenv
@@ -25,6 +26,20 @@ from app.commands.implementations.add import AddCommand
 from app.commands.implementations.remove import RemoveCommand
 from app.commands.implementations.claim import ClaimCommand
 from app.commands.implementations.rename import RenameCommand
+from app.services.message_service import (
+    save_discord_message,
+    update_message_content,
+    soft_delete_message,
+    get_ticket_by_channel,
+    is_user_staff,
+    extract_attachment_metadata
+)
+from app.services.message_service import (
+    save_discord_message,
+    update_message_content,
+    soft_delete_message,
+    get_ticket_by_channel
+)
 
 # Load environment variables
 load_dotenv()
@@ -64,6 +79,10 @@ class TicketBot:
         # Initialize command system
         self.command_registry = get_command_registry(self.bot)
         self.command_manager = get_command_manager()
+        
+        # Message processing rate limiting (per channel)
+        self._message_rate_limits: Dict[int, List[float]] = {}
+        self._message_rate_limit_per_minute = 100  # Max messages per minute per channel
         
         self._setup_event_handlers()
         self._setup_commands()
@@ -127,6 +146,21 @@ class TicketBot:
             """Handle bot disconnect event."""
             logger.warning("Bot disconnected from Discord")
             self._is_ready = False
+        
+        @self.bot.listen()
+        async def on_message_create(event: interactions.events.MessageCreate):
+            """Handle new message creation in Discord."""
+            await self._handle_message_create(event)
+        
+        @self.bot.listen()
+        async def on_message_update(event: interactions.events.MessageUpdate):
+            """Handle message edits in Discord."""
+            await self._handle_message_update(event)
+        
+        @self.bot.listen()
+        async def on_message_delete(event: interactions.events.MessageDelete):
+            """Handle message deletions in Discord."""
+            await self._handle_message_delete(event)
     
     async def start(self):
         """Start the bot with proper error handling."""
@@ -153,6 +187,207 @@ class TicketBot:
             # Bot may not be ready or stop method unavailable
             pass
         logger.info("Bot stopped successfully")
+    
+    def _check_message_rate_limit(self, channel_id: int) -> bool:
+        """
+        Check if message processing rate limit is exceeded for a channel.
+        
+        Args:
+            channel_id: Discord channel ID
+            
+        Returns:
+            True if under rate limit, False if exceeded
+        """
+        current_time = time.time()
+        channel_uses = self._message_rate_limits.setdefault(channel_id, [])
+        
+        # Remove uses older than 1 minute
+        channel_uses[:] = [use_time for use_time in channel_uses 
+                          if current_time - use_time < 60]
+        
+        if len(channel_uses) >= self._message_rate_limit_per_minute:
+            return False
+        
+        # Add current use
+        channel_uses.append(current_time)
+        return True
+    
+    async def _handle_message_create(self, event: interactions.events.MessageCreate):
+        """
+        Handle new message creation in Discord.
+        
+        Args:
+            event: Message create event
+        """
+        try:
+            message = event.message
+            
+            # Skip bot messages
+            if message.author.bot:
+                return
+            
+            # Check rate limit
+            if not self._check_message_rate_limit(int(message.channel.id)):
+                logger.warning(f"Rate limit exceeded for channel {message.channel.id}")
+                return
+            
+            # Filter messages to only process ticket channel messages
+            db = get_db_session()
+            try:
+                ticket = get_ticket_by_channel(db, int(message.channel.id))
+                if not ticket:
+                    # Not a ticket channel, skip
+                    return
+                
+                # Extract message content, author, and timestamp
+                content = message.content or ""
+                author_id = int(message.author.id)
+                guild_id = int(message.guild.id) if message.guild else None
+                
+                # Process message attachments and store metadata
+                attachments = []
+                if message.attachments:
+                    attachments = extract_attachment_metadata(message.attachments)
+                
+                # Determine if message is staff-only based on author role
+                is_staff_only = False
+                if guild_id:
+                    # Get member object to access roles
+                    member = await message.guild.fetch_member(author_id)
+                    if member and member.roles:
+                        user_roles = [int(role.id) for role in member.roles]
+                        is_staff_only = is_user_staff(db, author_id, guild_id, user_roles)
+                
+                # Call database function to save message
+                saved_message = save_discord_message(
+                    db=db,
+                    message_id=int(message.id),
+                    ticket_id=ticket.id,
+                    author_id=author_id,
+                    content=content,
+                    attachments=attachments,
+                    is_staff_only=is_staff_only,
+                    created_at=message.created_at.replace(tzinfo=None) if message.created_at else None
+                )
+                
+                if saved_message:
+                    logger.info(f"Saved message {message.id} from user {author_id} in ticket {ticket.id}")
+                else:
+                    logger.error(f"Failed to save message {message.id}")
+                
+            except Exception as e:
+                logger.error(f"Error processing message {message.id}: {e}")
+                db.rollback()
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"Error in message create handler: {e}")
+    
+    async def _handle_message_update(self, event: interactions.events.MessageUpdate):
+        """
+        Handle message edits in Discord.
+        
+        Args:
+            event: Message update event
+        """
+        try:
+            # In MessageUpdate, we need to use event.after for the updated message
+            message = event.after
+            
+            # Skip bot messages
+            if message.author.bot:
+                return
+            
+            # Check rate limit
+            if not self._check_message_rate_limit(int(message.channel.id)):
+                logger.warning(f"Rate limit exceeded for channel {message.channel.id}")
+                return
+            
+            # Filter messages to only process ticket channel messages
+            db = get_db_session()
+            try:
+                ticket = get_ticket_by_channel(db, int(message.channel.id))
+                if not ticket:
+                    # Not a ticket channel, skip
+                    return
+                
+                # Update existing message record when edited
+                new_content = message.content or ""
+                edited_at = message.edited_timestamp.replace(tzinfo=None) if message.edited_timestamp else None
+                
+                success = update_message_content(
+                    db=db,
+                    message_id=int(message.id),
+                    new_content=new_content,
+                    edited_at=edited_at
+                )
+                
+                if success:
+                    logger.info(f"Updated message {message.id} in ticket {ticket.id}")
+                else:
+                    logger.error(f"Failed to update message {message.id}")
+                
+            except Exception as e:
+                logger.error(f"Error processing message edit {message.id}: {e}")
+                db.rollback()
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"Error in message update handler: {e}")
+    
+    async def _handle_message_delete(self, event: interactions.events.MessageDelete):
+        """
+        Handle message deletions in Discord.
+        
+        Args:
+            event: Message delete event
+        """
+        try:
+            # In MessageDelete, we work with event.message
+            message = event.message
+            
+            # Skip if no message data available
+            if not message:
+                return
+            
+            # Skip bot messages
+            if message.author and message.author.bot:
+                return
+            
+            # Check rate limit
+            if not self._check_message_rate_limit(int(message.channel.id)):
+                logger.warning(f"Rate limit exceeded for channel {message.channel.id}")
+                return
+            
+            # Filter messages to only process ticket channel messages
+            db = get_db_session()
+            try:
+                ticket = get_ticket_by_channel(db, int(message.channel.id))
+                if not ticket:
+                    # Not a ticket channel, skip
+                    return
+                
+                # Soft delete message records instead of hard delete
+                success = soft_delete_message(
+                    db=db,
+                    message_id=int(message.id)
+                )
+                
+                if success:
+                    logger.info(f"Soft deleted message {message.id} in ticket {ticket.id}")
+                else:
+                    logger.warning(f"Failed to soft delete message {message.id} (may not exist)")
+                
+            except Exception as e:
+                logger.error(f"Error processing message deletion {message.id}: {e}")
+                db.rollback()
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"Error in message delete handler: {e}")
     
     def is_ready(self) -> bool:
         """Check if bot is ready and connected."""
