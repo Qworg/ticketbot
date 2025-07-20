@@ -1,0 +1,180 @@
+{
+	"info": {
+		"_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+		"name": "Discord Ticket Bot API",
+		"description": "Collection for testing the Discord Ticket Bot API endpoints",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Health Check",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/health",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"health"
+					]
+				},
+				"description": "Check if the API is running and healthy"
+			},
+			"response": []
+		},
+		{
+			"name": "API Info",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						""
+					]
+				},
+				"description": "Get basic API information"
+			},
+			"response": []
+		},
+		{
+			"name": "Create Ticket",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"title\": \"Test Ticket\",\n    \"description\": \"This is a test ticket created via Postman\",\n    \"priority\": \"medium\",\n    \"creator_discord_id\": 123456789,\n    \"discord_channel_id\": 987654321\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/tickets",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"tickets"
+					]
+				},
+				"description": "Create a new support ticket"
+			},
+			"response": []
+		},
+		{
+			"name": "Get All Tickets",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/tickets?page=1&size=10",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"tickets"
+					],
+					"query": [
+						{
+							"key": "page",
+							"value": "1"
+						},
+						{
+							"key": "size",
+							"value": "10"
+						},
+						{
+							"key": "status",
+							"value": "open",
+							"disabled": true
+						},
+						{
+							"key": "priority",
+							"value": "medium",
+							"disabled": true
+						},
+						{
+							"key": "search",
+							"value": "test",
+							"disabled": true
+						},
+						{
+							"key": "creator_id",
+							"value": "123456789",
+							"disabled": true
+						},
+						{
+							"key": "assigned_id",
+							"value": "987654321",
+							"disabled": true
+						}
+					]
+				},
+				"description": "Get all tickets with pagination and optional filtering"
+			},
+			"response": []
+		},
+		{
+			"name": "Get Ticket by ID",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/tickets/{{ticket_id}}",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"tickets",
+						"{{ticket_id}}"
+					]
+				},
+				"description": "Get a specific ticket by its ID"
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "ticket_id",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
