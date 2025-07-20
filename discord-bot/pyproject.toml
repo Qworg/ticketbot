@@ -1,0 +1,17 @@
+[project]
+name = "discord-bot"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "asyncpg==0.29.0",
+    "httpx==0.25.2",
+    "py-cord==2.4.1",
+    "pydantic==2.5.0",
+    "pytest==7.4.3",
+    "pytest-asyncio==0.21.1",
+    "python-dotenv==1.0.0",
+    "redis==5.0.1",
+    "sqlalchemy==2.0.23",
+]

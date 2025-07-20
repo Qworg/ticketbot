@@ -3,6 +3,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.routes import tickets_router
+from backend.db import check_db_connection
+
 app = FastAPI(
     title="Discord Ticket Bot API",
     description="REST API for Discord ticket management system",
@@ -18,11 +21,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include API routers
+app.include_router(tickets_router)
+
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint for container monitoring."""
-    return {"status": "healthy", "service": "discord-ticket-bot-backend"}
+    db_status = await check_db_connection()
+    return {
+        "status": "healthy" if db_status["status"] == "connected" else "unhealthy",
+        "service": "discord-ticket-bot-backend",
+        "database": db_status
+    }
 
 
 @app.get("/")

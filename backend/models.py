@@ -9,7 +9,7 @@ from sqlalchemy import (
     BigInteger, Boolean, Column, DateTime, ForeignKey, String, Text, 
     UUID, JSON, Index
 )
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 

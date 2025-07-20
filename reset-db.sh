@@ -24,23 +24,14 @@ echo "🗑️  Dropping database..."
 docker-compose exec -T postgres psql -U ticketbot -c "DROP DATABASE IF EXISTS ticketbot;"
 docker-compose exec -T postgres psql -U ticketbot -c "CREATE DATABASE ticketbot;"
 
-# Run migrations
-echo "🔄 Running database migrations..."
-docker-compose exec -T backend alembic upgrade head
-
-# Insert sample data for development
-echo "📝 Inserting sample data..."
-docker-compose exec -T postgres psql -U ticketbot -d ticketbot -c "
-INSERT INTO staff (id, discord_id, username, role, permissions, active) VALUES 
-(gen_random_uuid(), 123456789012345678, 'admin_user', 'admin', '{\"manage_tickets\": true, \"manage_staff\": true}', true),
-(gen_random_uuid(), 234567890123456789, 'support_user', 'support', '{\"manage_tickets\": true}', true);
-"
+# Run migrations and create sample data
+echo "🔄 Running database setup script..."
+docker-compose exec -T backend python -m scripts.setup_local_db
 
 # Restart services
 echo "🚀 Restarting backend services..."
 docker-compose up -d backend discord-bot
 
 echo "✅ Database reset completed successfully!"
-echo "👤 Sample staff users created:"
-echo "   - Admin User (ID: 123456789012345678)"
-echo "   - Support User (ID: 234567890123456789)"
+echo "👤 Sample data has been created with test tickets and users"
+echo "📊 You can now access the system and see the sample data"

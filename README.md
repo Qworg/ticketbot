@@ -34,24 +34,43 @@ ticketbot/
 ├── start.sh              # Script to start development environment
 ├── stop.sh               # Script to stop development environment
 ├── reset-db.sh           # Script to reset database and run migrations
+├── setup-local-db.bat    # Windows script for local database setup
+│
+├── .kiro/                # Kiro IDE configuration
+│   ├── specs/            # Kiro specifications
+│   └── steering/         # Kiro steering rules
+│       └── python-uv.md  # uv package manager guidance
 │
 ├── backend/              # FastAPI Backend Service
 │   ├── Dockerfile        # Docker configuration for backend
 │   ├── alembic.ini       # Alembic configuration
 │   ├── main.py           # FastAPI application entry point
 │   ├── models.py         # SQLAlchemy database models
-│   ├── requirements.txt  # Python dependencies
+│   ├── schemas.py        # Pydantic schemas for API
+│   ├── database_service.py # Database service layer
+│   ├── db.py             # Database connection utilities
+│   ├── pyproject.toml    # Python project dependencies (for uv)
+│   ├── uv.lock           # uv lock file for dependencies
+│   ├── .python-version   # Python version specification
+│   ├── pytest.ini        # Pytest configuration
+│   ├── run_tests.py      # Test runner script
 │   ├── __init__.py       # Package initialization
+│   ├── repositories/     # Repository pattern implementations
+│   ├── services/         # Business logic services
+│   ├── tests/            # Test suite
+│   │   └── test_enhanced_database_service.py # Database service tests
 │   └── migrations/       # Database migrations
 │       ├── env.py        # Alembic environment
 │       ├── script.py.mako # Migration template
 │       └── versions/     # Migration versions
-│           └── 001_initial_schema.py # Initial database schema
 │
 ├── discord-bot/          # Discord Bot Service
 │   ├── Dockerfile        # Docker configuration for Discord bot
 │   ├── main.py           # Discord bot entry point
-│   ├── requirements.txt  # Python dependencies
+│   ├── pyproject.toml    # Python project dependencies (for uv)
+│   ├── uv.lock           # uv lock file for dependencies
+│   ├── .python-version   # Python version specification
+│   ├── README.md         # Discord bot documentation
 │   └── __init__.py       # Package initialization
 │
 └── dashboard/            # React Web Dashboard
@@ -59,19 +78,8 @@ ticketbot/
     ├── index.html        # HTML entry point
     ├── package.json      # Node.js dependencies
     └── src/              # React source code
-        ├── App.tsx       # Main React component
-        ├── index.css     # Global styles
-        ├── main.tsx      # React entry point
         ├── components/   # Reusable components
-        │   ├── Layout.tsx    # Main layout component
-        │   ├── Navbar.tsx    # Navigation bar
-        │   └── Sidebar.tsx   # Sidebar navigation
         └── pages/        # Page components
-            ├── Dashboard.tsx     # Dashboard page
-            ├── NotFound.tsx      # 404 page
-            ├── TicketDetail.tsx  # Ticket details page
-            ├── TicketList.tsx    # Ticket list page
-            └── TranscriptSearch.tsx # Transcript search page
 ```
 
 ## Quick Start
@@ -81,6 +89,7 @@ ticketbot/
 - Docker and Docker Compose
 - Discord Bot Token and Guild ID
 - Git
+- uv (Python package manager) - for local development
 
 ### 1. Clone and Setup
 
@@ -135,6 +144,46 @@ This script will:
 - Run database migrations
 - Display service URLs and helpful commands
 
+### Local Development with uv
+
+This project uses `uv` as the Python package manager for faster dependency resolution and virtual environment management.
+
+#### Installing uv
+
+```bash
+# Install uv using pip
+pip install uv
+
+# Or on macOS with Homebrew
+brew install uv
+```
+
+#### Setting up local development environment
+
+```bash
+# Backend service
+cd backend
+uv venv  # Create a virtual environment
+uv pip install -e .  # Install the package in development mode
+
+# Discord bot service
+cd discord-bot
+uv venv
+uv pip install -e .
+```
+
+#### Running services locally
+
+```bash
+# Run backend service
+cd backend
+uv run python main.py
+
+# Run Discord bot
+cd discord-bot
+uv run python main.py
+```
+
 ### Stopping Development
 
 ```bash
@@ -173,14 +222,18 @@ docker-compose logs -f dashboard
 ### Running Tests
 
 ```bash
-# Backend tests
+# Backend tests (in Docker)
 docker-compose exec backend pytest
 
-# Discord bot tests
+# Discord bot tests (in Docker)
 docker-compose exec discord-bot pytest
 
-# Frontend tests
+# Frontend tests (in Docker)
 docker-compose exec dashboard npm test
+
+# Local development with uv (outside Docker)
+cd backend
+uv run python run_tests.py  # Run backend tests
 ```
 
 ## Configuration
