@@ -1,10 +1,16 @@
 """
-Simple test runner script for the database service tests.
+Simple test runner script for the backend tests.
 """
 import pytest
 import sys
 
 if __name__ == "__main__":
+    # Get command line arguments
+    args = sys.argv[1:]
+    
+    # If no arguments provided, run all tests
+    if not args:
+        args = ["-v", "tests/"]
+    
     # Run the tests
-    test_file = "tests/test_enhanced_database_service.py"
-    sys.exit(pytest.main(["-v", test_file]))
+    sys.exit(pytest.main(args))

@@ -104,6 +104,8 @@
 - [-] 4. Create REST API endpoints
 
 
+
+
   - [x] 4.1 Implement core ticket API endpoints
 
 
@@ -115,7 +117,10 @@
     - Add local API testing script with curl examples and Postman collection
     - _Requirements: 7.1, 7.4, 7.5_
   
-  - [ ] 4.2 Implement ticket management API endpoints
+  - [x] 4.2 Implement ticket management API endpoints
+
+
+
     - Create PUT /api/tickets/{id} endpoint for ticket updates
     - Create DELETE /api/tickets/{id} endpoint for ticket closure
     - Create POST /api/tickets/{id}/messages endpoint for adding messages

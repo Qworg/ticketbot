@@ -3,15 +3,15 @@
 from typing import Optional, List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Path
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, Response
 from fastapi import status as http_status
 from fastapi.responses import JSONResponse
 
 from backend.database_service import DatabaseService, get_db_service
-from backend.models import TicketStatus, Priority
+from backend.models import TicketStatus, Priority, MessageType
 from backend.schemas import (
     Ticket, TicketCreate, TicketUpdate, TicketPagination,
-    TicketWithMessages, ErrorResponse
+    TicketWithMessages, ErrorResponse, Message, MessageCreate
 )
 
 router = APIRouter(
@@ -192,4 +192,170 @@ async def get_ticket(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve ticket: {str(e)}"
+        )
+@router.put(
+    "/{ticket_id}",
+    response_model=Ticket,
+    summary="Update ticket details",
+    description="Updates an existing ticket with new information."
+)
+async def update_ticket(
+    ticket_data: TicketUpdate,
+    ticket_id: UUID = Path(..., description="Ticket UUID"),
+    db: DatabaseService = Depends(get_db_service)
+) -> Ticket:
+    """Update an existing ticket.
+    
+    Args:
+        ticket_data: Ticket update data
+        ticket_id: Ticket UUID
+        db: Database service dependency
+        
+    Returns:
+        Updated ticket
+        
+    Raises:
+        HTTPException: If ticket is not found or update fails
+    """
+    try:
+        # Check if ticket exists
+        existing_ticket = await db.tickets.get_by_id(ticket_id)
+        if not existing_ticket:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Ticket with ID {ticket_id} not found"
+            )
+        
+        # Prepare update data
+        update_data = ticket_data.model_dump(exclude_unset=True)
+        
+        # Update the ticket
+        updated_ticket = await db.tickets.update(
+            ticket_id,
+            **update_data
+        )
+        
+        return updated_ticket
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update ticket: {str(e)}"
+        )
+
+
+@router.delete(
+    "/{ticket_id}",
+    status_code=http_status.HTTP_200_OK,
+    response_model=Ticket,
+    summary="Close a ticket",
+    description="Closes a ticket by setting its status to CLOSED and recording the closure time."
+)
+async def close_ticket(
+    ticket_id: UUID = Path(..., description="Ticket UUID"),
+    db: DatabaseService = Depends(get_db_service)
+) -> Ticket:
+    """Close a ticket.
+    
+    Args:
+        ticket_id: Ticket UUID
+        db: Database service dependency
+        
+    Returns:
+        Closed ticket
+        
+    Raises:
+        HTTPException: If ticket is not found or closure fails
+    """
+    try:
+        # Check if ticket exists
+        existing_ticket = await db.tickets.get_by_id(ticket_id)
+        if not existing_ticket:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Ticket with ID {ticket_id} not found"
+            )
+        
+        # Check if ticket is already closed
+        if existing_ticket.status == TicketStatus.CLOSED.value:
+            return existing_ticket
+        
+        # Close the ticket
+        closed_ticket = await db.tickets.close_ticket(ticket_id)
+        
+        return closed_ticket
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to close ticket: {str(e)}"
+        )
+
+
+@router.post(
+    "/{ticket_id}/messages",
+    status_code=http_status.HTTP_201_CREATED,
+    response_model=Message,
+    summary="Add message to ticket",
+    description="Adds a new message to an existing ticket."
+)
+async def add_message(
+    message_data: MessageCreate,
+    ticket_id: UUID = Path(..., description="Ticket UUID"),
+    db: DatabaseService = Depends(get_db_service)
+) -> Message:
+    """Add a new message to a ticket.
+    
+    Args:
+        message_data: Message creation data
+        ticket_id: Ticket UUID
+        db: Database service dependency
+        
+    Returns:
+        Created message
+        
+    Raises:
+        HTTPException: If ticket is not found or message creation fails
+    """
+    try:
+        # Check if ticket exists
+        existing_ticket = await db.tickets.get_by_id(ticket_id)
+        if not existing_ticket:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Ticket with ID {ticket_id} not found"
+            )
+        
+        # Check if ticket is closed
+        if existing_ticket.status == TicketStatus.CLOSED.value:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Cannot add messages to a closed ticket"
+            )
+        
+        # Ensure the ticket_id in the path matches the one in the request body
+        if message_data.ticket_id != ticket_id:
+            message_data.ticket_id = ticket_id
+        
+        # Create the message
+        message = await db.messages.create(
+            ticket_id=message_data.ticket_id,
+            content=message_data.content,
+            author_discord_id=message_data.author_discord_id,
+            discord_message_id=message_data.discord_message_id,
+            message_type=message_data.message_type
+        )
+        
+        # Update the ticket's updated_at timestamp
+        await db.tickets.update(ticket_id, updated_at=message.created_at)
+        
+        return message
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to add message: {str(e)}"
         )
