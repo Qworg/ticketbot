@@ -1,0 +1,242 @@
+{
+	"info": {
+		"_postman_id": "b5e3f8a1-5c5e-4b5a-8c5a-5c5e4b5a8c5a",
+		"name": "Discord Ticket Bot - Transcript API",
+		"description": "Collection for testing the Discord Ticket Bot Transcript API endpoints",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Get Ticket Transcript",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/tickets/{{ticket_id}}/transcript",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"tickets",
+						"{{ticket_id}}",
+						"transcript"
+					]
+				},
+				"description": "Get the transcript for a specific ticket"
+			},
+			"response": []
+		},
+		{
+			"name": "Generate Share Token",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/tickets/{{ticket_id}}/transcript/share",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"tickets",
+						"{{ticket_id}}",
+						"transcript",
+						"share"
+					]
+				},
+				"description": "Generate or refresh a share token for a ticket transcript"
+			},
+			"response": []
+		},
+		{
+			"name": "Revoke Share Token",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/tickets/{{ticket_id}}/transcript/share",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"tickets",
+						"{{ticket_id}}",
+						"transcript",
+						"share"
+					]
+				},
+				"description": "Revoke the share token for a ticket transcript"
+			},
+			"response": []
+		},
+		{
+			"name": "Get Transcript by Share Token",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/transcripts/shared/{{share_token}}",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"transcripts",
+						"shared",
+						"{{share_token}}"
+					]
+				},
+				"description": "Get a transcript using a share token"
+			},
+			"response": []
+		},
+		{
+			"name": "Search Transcripts",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/search/transcripts?search=test&page=1&size=10",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"search",
+						"transcripts"
+					],
+					"query": [
+						{
+							"key": "search",
+							"value": "test",
+							"description": "Search term for transcript content"
+						},
+						{
+							"key": "page",
+							"value": "1",
+							"description": "Page number"
+						},
+						{
+							"key": "size",
+							"value": "10",
+							"description": "Items per page"
+						},
+						{
+							"key": "search_mode",
+							"value": "basic",
+							"description": "Search mode (basic, fuzzy, advanced)",
+							"disabled": true
+						},
+						{
+							"key": "created_after",
+							"value": "2023-01-01T00:00:00",
+							"description": "Filter by created after date",
+							"disabled": true
+						},
+						{
+							"key": "created_before",
+							"value": "2023-12-31T23:59:59",
+							"description": "Filter by created before date",
+							"disabled": true
+						}
+					]
+				},
+				"description": "Search transcripts by content with filtering and pagination"
+			},
+			"response": []
+		},
+		{
+			"name": "Search Transcripts with Fuzzy Mode",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/search/transcripts?search=test&search_mode=fuzzy&page=1&size=10",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"search",
+						"transcripts"
+					],
+					"query": [
+						{
+							"key": "search",
+							"value": "test",
+							"description": "Search term for transcript content"
+						},
+						{
+							"key": "search_mode",
+							"value": "fuzzy",
+							"description": "Search mode (basic, fuzzy, advanced)"
+						},
+						{
+							"key": "page",
+							"value": "1",
+							"description": "Page number"
+						},
+						{
+							"key": "size",
+							"value": "10",
+							"description": "Items per page"
+						},
+						{
+							"key": "created_after",
+							"value": "2023-01-01T00:00:00",
+							"description": "Filter by created after date",
+							"disabled": true
+						},
+						{
+							"key": "created_before",
+							"value": "2023-12-31T23:59:59",
+							"description": "Filter by created before date",
+							"disabled": true
+						}
+					]
+				},
+				"description": "Search transcripts by content with fuzzy search mode"
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "ticket_id",
+			"value": "00000000-0000-0000-0000-000000000000",
+			"type": "string"
+		},
+		{
+			"key": "share_token",
+			"value": "",
+			"type": "string"
+		}
+	]
+}

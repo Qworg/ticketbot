@@ -23,6 +23,10 @@ Use `uv` to run tests:
 cd backend
 uv run python run_tests.py
 ```
+OR
+```bash
+uv run pytest backend/tests/test_transcript_api.py -v
+```
 
 ## Benefits of uv
 

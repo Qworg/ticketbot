@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.routes import tickets_router
+from backend.routes import tickets_router, transcripts_router
 from backend.db import check_db_connection
 
 app = FastAPI(
@@ -23,6 +23,7 @@ app.add_middleware(
 
 # Include API routers
 app.include_router(tickets_router)
+app.include_router(transcripts_router)
 
 
 @app.get("/health")
