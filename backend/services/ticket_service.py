@@ -13,6 +13,7 @@ from uuid import UUID
 from backend.database_service import DatabaseService
 from backend.models import Ticket, TicketStatus, Priority, Message, MessageType
 from backend.schemas import TicketCreate, TicketUpdate
+from backend.services.redis_service import RedisService, EventType
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -26,13 +27,15 @@ class TicketService:
     It enforces business rules and validation for all ticket operations.
     """
     
-    def __init__(self, db_service: DatabaseService):
+    def __init__(self, db_service: DatabaseService, redis_service: Optional[RedisService] = None):
         """Initialize ticket service with database service.
         
         Args:
             db_service: Database service instance
+            redis_service: Optional Redis service for real-time events
         """
         self.db = db_service
+        self.redis = redis_service
         self.status_change_handlers = {
             TicketStatus.OPEN.value: self._handle_open_status,
             TicketStatus.IN_PROGRESS.value: self._handle_in_progress_status,
@@ -78,6 +81,21 @@ class TicketService:
         )
         
         await self.db.commit()
+        
+        # Publish ticket created event
+        if self.redis:
+            ticket_dict = {
+                "id": str(ticket.id),
+                "discord_channel_id": ticket.discord_channel_id,
+                "title": ticket.title,
+                "description": ticket.description,
+                "status": ticket.status,
+                "priority": ticket.priority,
+                "creator_discord_id": ticket.creator_discord_id,
+                "created_at": ticket.created_at.isoformat() if ticket.created_at else None
+            }
+            await self.redis.publish_ticket_event(EventType.TICKET_CREATED, ticket_dict)
+        
         return ticket
     
     async def get_ticket(self, ticket_id: UUID) -> Optional[Ticket]:
@@ -161,6 +179,33 @@ class TicketService:
         # Update the ticket
         updated_ticket = await self.db.tickets.update(ticket_id, **update_data)
         await self.db.commit()
+        
+        # Publish ticket updated event
+        if self.redis and updated_ticket:
+            # Determine the event type based on what changed
+            event_type = EventType.TICKET_UPDATED
+            
+            if ticket_data.status == TicketStatus.CLOSED.value and ticket.status != TicketStatus.CLOSED.value:
+                event_type = EventType.TICKET_CLOSED
+            elif ticket_data.status == TicketStatus.OPEN.value and ticket.status == TicketStatus.CLOSED.value:
+                event_type = EventType.TICKET_REOPENED
+            elif ticket_data.assigned_staff_id is not None and ticket_data.assigned_staff_id != ticket.assigned_staff_id:
+                event_type = EventType.TICKET_ASSIGNED
+            
+            ticket_dict = {
+                "id": str(updated_ticket.id),
+                "discord_channel_id": updated_ticket.discord_channel_id,
+                "title": updated_ticket.title,
+                "description": updated_ticket.description,
+                "status": updated_ticket.status,
+                "priority": updated_ticket.priority,
+                "creator_discord_id": updated_ticket.creator_discord_id,
+                "assigned_staff_id": updated_ticket.assigned_staff_id,
+                "updated_by_discord_id": updated_by_discord_id,
+                "updated_at": updated_ticket.updated_at.isoformat() if updated_ticket.updated_at else None,
+                "changes": update_data  # Include what was changed
+            }
+            await self.redis.publish_ticket_event(event_type, ticket_dict)
         
         return updated_ticket
     
@@ -472,6 +517,25 @@ class TicketService:
         await self.db.tickets.update(ticket_id)
         
         await self.db.commit()
+        
+        # Publish message created event
+        if self.redis:
+            message_dict = {
+                "id": str(message.id),
+                "ticket_id": str(message.ticket_id),
+                "discord_message_id": message.discord_message_id,
+                "author_discord_id": message.author_discord_id,
+                "content": message.content,
+                "message_type": message.message_type,
+                "created_at": message.created_at.isoformat() if message.created_at else None,
+                "ticket": {
+                    "id": str(ticket.id),
+                    "discord_channel_id": ticket.discord_channel_id,
+                    "title": ticket.title
+                }
+            }
+            await self.redis.publish_message_event(EventType.MESSAGE_CREATED, message_dict)
+        
         return message
     
     async def add_system_message(

@@ -1,285 +1,207 @@
-"""Repository for staff database operations."""
+"""
+Staff repository for database operations.
+Handles CRUD operations for staff members.
+"""
 
-from typing import List, Optional, Dict, Any
+from typing import Dict, List, Optional, Any
 from uuid import UUID
 
-from sqlalchemy import select, func, desc
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import and_, or_
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
-from backend.models import Staff, StaffRole
-from backend.repositories.base import BaseRepository
+from backend.models import Staff
+from backend.repositories.base_repository import BaseRepository
 
 
 class StaffRepository(BaseRepository[Staff]):
-    """Repository for staff-specific database operations."""
+    """Repository for staff database operations."""
     
-    def __init__(self, session: AsyncSession):
-        """Initialize staff repository."""
-        super().__init__(Staff, session)
+    def __init__(self, db: Session):
+        """Initialize the staff repository."""
+        super().__init__(db, Staff)
     
-    async def get_by_discord_id(self, discord_id: int) -> Optional[Staff]:
-        """Get staff member by Discord ID.
+    def get_by_discord_id(self, discord_id: int) -> Optional[Staff]:
+        """
+        Get a staff member by their Discord ID.
         
         Args:
-            discord_id: Discord ID
+            discord_id: Discord ID of the staff member
             
         Returns:
-            Staff instance or None if not found
+            Staff object if found, None otherwise
         """
-        result = await self.session.execute(
-            select(self.model).where(self.model.discord_id == discord_id)
-        )
-        return result.scalar_one_or_none()
+        return self.db.query(Staff).filter(Staff.discord_id == discord_id).first()
     
-    async def get_by_role(
-        self,
-        role: StaffRole,
-        active_only: bool = True,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None
-    ) -> List[Staff]:
-        """Get staff members by role.
-        
-        Args:
-            role: Staff role
-            active_only: If True, only return active staff members
-            limit: Maximum number of staff members to return
-            offset: Number of staff members to skip
-            
-        Returns:
-            List of staff members
+    def get_active_staff(self) -> List[Staff]:
         """
-        query = select(self.model).where(self.model.role == role.value)
+        Get all active staff members.
         
-        if active_only:
-            query = query.where(self.model.active == True)
-        
-        query = query.order_by(self.model.username)
-        
-        if offset:
-            query = query.offset(offset)
-        
-        if limit:
-            query = query.limit(limit)
-        
-        result = await self.session.execute(query)
-        return result.scalars().all()
-    
-    async def get_active_staff(
-        self,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None
-    ) -> List[Staff]:
-        """Get all active staff members.
-        
-        Args:
-            limit: Maximum number of staff members to return
-            offset: Number of staff members to skip
-            
         Returns:
             List of active staff members
         """
-        query = select(self.model).where(self.model.active == True)
-        query = query.order_by(self.model.username)
-        
-        if offset:
-            query = query.offset(offset)
-        
-        if limit:
-            query = query.limit(limit)
-        
-        result = await self.session.execute(query)
-        return result.scalars().all()
+        return self.db.query(Staff).filter(Staff.active == True).all()
     
-    async def search_staff(
-        self,
-        search_term: str,
-        role: Optional[StaffRole] = None,
-        active_only: bool = True,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None
-    ) -> List[Staff]:
-        """Search staff members by username.
+    def get_by_role(self, role: str) -> List[Staff]:
+        """
+        Get all staff members with a specific role.
         
         Args:
-            search_term: Search term for username
+            role: Staff role to filter by
+            
+        Returns:
+            List of staff members with the specified role
+        """
+        return self.db.query(Staff).filter(
+            and_(Staff.role == role, Staff.active == True)
+        ).all()
+    
+    def search_staff(
+        self, 
+        query: str, 
+        role: Optional[str] = None,
+        active_only: bool = True
+    ) -> List[Staff]:
+        """
+        Search staff members by username.
+        
+        Args:
+            query: Search query for username
             role: Optional role filter
-            active_only: If True, only return active staff members
-            limit: Maximum number of staff members to return
-            offset: Number of staff members to skip
+            active_only: Whether to include only active staff
             
         Returns:
             List of matching staff members
         """
-        query = select(self.model).where(
-            self.model.username.ilike(f"%{search_term}%")
-        )
+        filters = [Staff.username.ilike(f"%{query}%")]
         
         if role:
-            query = query.where(self.model.role == role.value)
+            filters.append(Staff.role == role)
         
         if active_only:
-            query = query.where(self.model.active == True)
+            filters.append(Staff.active == True)
         
-        query = query.order_by(self.model.username)
-        
-        if offset:
-            query = query.offset(offset)
-        
-        if limit:
-            query = query.limit(limit)
-        
-        result = await self.session.execute(query)
-        return result.scalars().all()
+        return self.db.query(Staff).filter(and_(*filters)).all()
     
-    async def get_staff_with_permission(
-        self,
-        permission: str,
-        active_only: bool = True,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None
-    ) -> List[Staff]:
-        """Get staff members with a specific permission.
+    def create(self, staff_data: Dict[str, Any]) -> Staff:
+        """
+        Create a new staff member.
         
         Args:
-            permission: Permission name
-            active_only: If True, only return active staff members
-            limit: Maximum number of staff members to return
-            offset: Number of staff members to skip
+            staff_data: Dictionary containing staff data
             
         Returns:
-            List of staff members with the permission
+            Created staff object
+            
+        Raises:
+            IntegrityError: If Discord ID already exists
         """
-        query = select(self.model).where(
-            self.model.permissions[permission].astext == 'true'
-        )
-        
-        if active_only:
-            query = query.where(self.model.active == True)
-        
-        query = query.order_by(self.model.username)
-        
-        if offset:
-            query = query.offset(offset)
-        
-        if limit:
-            query = query.limit(limit)
-        
-        result = await self.session.execute(query)
-        return result.scalars().all()
+        try:
+            staff = Staff(**staff_data)
+            self.db.add(staff)
+            self.db.commit()
+            self.db.refresh(staff)
+            return staff
+        except IntegrityError as e:
+            self.db.rollback()
+            if "discord_id" in str(e):
+                raise ValueError("Staff member with this Discord ID already exists")
+            raise e
     
-    async def update_permissions(
-        self,
-        staff_id: UUID,
-        permissions: Dict[str, bool]
-    ) -> Optional[Staff]:
-        """Update staff member permissions.
+    def update(self, staff_id: UUID, update_data: Dict[str, Any]) -> Optional[Staff]:
+        """
+        Update a staff member.
         
         Args:
-            staff_id: Staff UUID
-            permissions: Dictionary of permissions to update
+            staff_id: ID of the staff member to update
+            update_data: Dictionary containing update data
             
         Returns:
-            Updated staff instance or None if not found
+            Updated staff object if found, None otherwise
         """
-        staff = await self.get_by_id(staff_id)
+        staff = self.get_by_id(staff_id)
         if not staff:
             return None
         
-        # Merge with existing permissions
-        current_permissions = staff.permissions or {}
-        current_permissions.update(permissions)
+        for key, value in update_data.items():
+            if hasattr(staff, key):
+                setattr(staff, key, value)
         
-        return await self.update(staff_id, permissions=current_permissions)
+        try:
+            self.db.commit()
+            self.db.refresh(staff)
+            return staff
+        except IntegrityError as e:
+            self.db.rollback()
+            if "discord_id" in str(e):
+                raise ValueError("Staff member with this Discord ID already exists")
+            raise e
     
-    async def deactivate_staff(self, staff_id: UUID) -> Optional[Staff]:
-        """Deactivate a staff member.
+    def deactivate(self, staff_id: UUID) -> bool:
+        """
+        Deactivate a staff member (soft delete).
         
         Args:
-            staff_id: Staff UUID
+            staff_id: ID of the staff member to deactivate
             
         Returns:
-            Updated staff instance or None if not found
+            True if staff member was deactivated, False if not found
         """
-        return await self.update(staff_id, active=False)
-    
-    async def activate_staff(self, staff_id: UUID) -> Optional[Staff]:
-        """Activate a staff member.
-        
-        Args:
-            staff_id: Staff UUID
-            
-        Returns:
-            Updated staff instance or None if not found
-        """
-        return await self.update(staff_id, active=True)
-    
-    async def get_staff_stats(self) -> Dict[str, Any]:
-        """Get staff statistics.
-        
-        Returns:
-            Dictionary with staff statistics
-        """
-        # Total staff count
-        total_result = await self.session.execute(
-            select(func.count(self.model.id))
-        )
-        total_staff = total_result.scalar()
-        
-        # Active staff count
-        active_result = await self.session.execute(
-            select(func.count(self.model.id)).where(self.model.active == True)
-        )
-        active_staff = active_result.scalar()
-        
-        # Count by role
-        role_counts = {}
-        for role in StaffRole:
-            count_result = await self.session.execute(
-                select(func.count(self.model.id)).where(
-                    self.model.role == role.value,
-                    self.model.active == True
-                )
-            )
-            role_counts[role.value] = count_result.scalar()
-        
-        return {
-            "total_staff": total_staff,
-            "active_staff": active_staff,
-            "inactive_staff": total_staff - active_staff,
-            "role_counts": role_counts
-        }
-    
-    async def is_staff_member(self, discord_id: int) -> bool:
-        """Check if a Discord user is a staff member.
-        
-        Args:
-            discord_id: Discord ID
-            
-        Returns:
-            True if user is an active staff member, False otherwise
-        """
-        result = await self.session.execute(
-            select(self.model.id).where(
-                self.model.discord_id == discord_id,
-                self.model.active == True
-            ).limit(1)
-        )
-        return result.scalar_one_or_none() is not None
-    
-    async def has_permission(self, discord_id: int, permission: str) -> bool:
-        """Check if a staff member has a specific permission.
-        
-        Args:
-            discord_id: Discord ID
-            permission: Permission name
-            
-        Returns:
-            True if staff member has the permission, False otherwise
-        """
-        staff = await self.get_by_discord_id(discord_id)
-        if not staff or not staff.active:
+        staff = self.get_by_id(staff_id)
+        if not staff:
             return False
         
-        permissions = staff.permissions or {}
-        return permissions.get(permission, False)
+        staff.active = False
+        self.db.commit()
+        return True
+    
+    def activate(self, staff_id: UUID) -> bool:
+        """
+        Activate a staff member.
+        
+        Args:
+            staff_id: ID of the staff member to activate
+            
+        Returns:
+            True if staff member was activated, False if not found
+        """
+        staff = self.get_by_id(staff_id)
+        if not staff:
+            return False
+        
+        staff.active = True
+        self.db.commit()
+        return True
+    
+    def update_permissions(
+        self, 
+        staff_id: UUID, 
+        permissions: Dict[str, bool]
+    ) -> Optional[Staff]:
+        """
+        Update staff member permissions.
+        
+        Args:
+            staff_id: ID of the staff member
+            permissions: New permissions dictionary
+            
+        Returns:
+            Updated staff object if found, None otherwise
+        """
+        return self.update(staff_id, {"permissions": permissions})
+    
+    def get_staff_with_permission(self, permission: str) -> List[Staff]:
+        """
+        Get all active staff members with a specific permission.
+        
+        Args:
+            permission: Permission to check for
+            
+        Returns:
+            List of staff members with the specified permission
+        """
+        staff_members = self.get_active_staff()
+        return [
+            staff for staff in staff_members
+            if staff.permissions.get(permission, False)
+        ]

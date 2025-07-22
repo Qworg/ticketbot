@@ -10,13 +10,13 @@ This module provides database connection management with:
 import os
 import logging
 import time
-from typing import AsyncGenerator, Dict, Any, Optional
+from typing import AsyncGenerator, Dict, Any, Optional, Generator
 from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession, create_async_engine, async_sessionmaker
 )
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError, DBAPIError
 from sqlalchemy.pool import QueuePool
@@ -180,6 +180,23 @@ def get_sync_session():
         Session: SQLAlchemy synchronous session
     """
     return SyncSessionFactory()
+
+
+def get_db() -> Generator[Session, None, None]:
+    """FastAPI dependency for getting a database session.
+    
+    This function provides a synchronous database session for use with
+    FastAPI dependency injection. The session is automatically closed
+    after the request is processed.
+    
+    Yields:
+        Session: SQLAlchemy synchronous session
+    """
+    db = SyncSessionFactory()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 async def execute_with_retry(session: AsyncSession, query, max_retries: int = 3, retry_delay: float = 0.5) -> Any:

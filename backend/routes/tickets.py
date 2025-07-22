@@ -13,6 +13,8 @@ from backend.schemas import (
     Ticket, TicketCreate, TicketUpdate, TicketPagination,
     TicketWithMessages, ErrorResponse, Message, MessageCreate
 )
+from backend.services.redis_service import RedisService, get_redis, EventType
+from backend.services.ticket_service import TicketService
 
 router = APIRouter(
     prefix="/api/tickets",
@@ -34,13 +36,15 @@ router = APIRouter(
 )
 async def create_ticket(
     ticket_data: TicketCreate,
-    db: DatabaseService = Depends(get_db_service)
+    db: DatabaseService = Depends(get_db_service),
+    redis: RedisService = Depends(get_redis)
 ) -> Ticket:
     """Create a new ticket.
     
     Args:
         ticket_data: Ticket creation data
         db: Database service dependency
+        redis: Redis service dependency
         
     Returns:
         Created ticket
@@ -49,26 +53,21 @@ async def create_ticket(
         HTTPException: If ticket creation fails
     """
     try:
-        # Check if a ticket with the same Discord channel ID already exists
-        existing_ticket = await db.tickets.get_by_discord_channel_id(
-            ticket_data.discord_channel_id
-        )
-        if existing_ticket:
-            raise HTTPException(
-                status_code=http_status.HTTP_409_CONFLICT,
-                detail=f"Ticket with Discord channel ID {ticket_data.discord_channel_id} already exists"
-            )
+        # Use the ticket service with Redis for real-time events
+        ticket_service = TicketService(db, redis)
         
         # Create the ticket
-        ticket = await db.tickets.create(
-            discord_channel_id=ticket_data.discord_channel_id,
-            title=ticket_data.title,
-            description=ticket_data.description,
-            priority=ticket_data.priority,
+        ticket = await ticket_service.create_ticket(
+            ticket_data=ticket_data,
             creator_discord_id=ticket_data.creator_discord_id
         )
         
         return ticket
+    except ValueError as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail=str(e)
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -202,7 +201,8 @@ async def get_ticket(
 async def update_ticket(
     ticket_data: TicketUpdate,
     ticket_id: UUID = Path(..., description="Ticket UUID"),
-    db: DatabaseService = Depends(get_db_service)
+    db: DatabaseService = Depends(get_db_service),
+    redis: RedisService = Depends(get_redis)
 ) -> Ticket:
     """Update an existing ticket.
     
@@ -210,6 +210,7 @@ async def update_ticket(
         ticket_data: Ticket update data
         ticket_id: Ticket UUID
         db: Database service dependency
+        redis: Redis service dependency
         
     Returns:
         Updated ticket
@@ -218,24 +219,31 @@ async def update_ticket(
         HTTPException: If ticket is not found or update fails
     """
     try:
-        # Check if ticket exists
-        existing_ticket = await db.tickets.get_by_id(ticket_id)
-        if not existing_ticket:
+        # Use the ticket service with Redis for real-time events
+        ticket_service = TicketService(db, redis)
+        
+        # Get the updated_by_discord_id from the request or use a default
+        updated_by_discord_id = getattr(ticket_data, "updated_by_discord_id", 0)
+        
+        # Update the ticket
+        updated_ticket = await ticket_service.update_ticket(
+            ticket_id=ticket_id,
+            ticket_data=ticket_data,
+            updated_by_discord_id=updated_by_discord_id
+        )
+        
+        if not updated_ticket:
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=f"Ticket with ID {ticket_id} not found"
             )
         
-        # Prepare update data
-        update_data = ticket_data.model_dump(exclude_unset=True)
-        
-        # Update the ticket
-        updated_ticket = await db.tickets.update(
-            ticket_id,
-            **update_data
-        )
-        
         return updated_ticket
+    except ValueError as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -254,13 +262,17 @@ async def update_ticket(
 )
 async def close_ticket(
     ticket_id: UUID = Path(..., description="Ticket UUID"),
-    db: DatabaseService = Depends(get_db_service)
+    closed_by: Optional[int] = Query(0, description="Discord ID of the user closing the ticket"),
+    db: DatabaseService = Depends(get_db_service),
+    redis: RedisService = Depends(get_redis)
 ) -> Ticket:
     """Close a ticket.
     
     Args:
         ticket_id: Ticket UUID
+        closed_by: Discord ID of the user closing the ticket
         db: Database service dependency
+        redis: Redis service dependency
         
     Returns:
         Closed ticket
@@ -269,22 +281,27 @@ async def close_ticket(
         HTTPException: If ticket is not found or closure fails
     """
     try:
-        # Check if ticket exists
-        existing_ticket = await db.tickets.get_by_id(ticket_id)
-        if not existing_ticket:
+        # Use the ticket service with Redis for real-time events
+        ticket_service = TicketService(db, redis)
+        
+        # Close the ticket
+        closed_ticket = await ticket_service.close_ticket(
+            ticket_id=ticket_id,
+            closed_by_discord_id=closed_by
+        )
+        
+        if not closed_ticket:
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=f"Ticket with ID {ticket_id} not found"
             )
         
-        # Check if ticket is already closed
-        if existing_ticket.status == TicketStatus.CLOSED.value:
-            return existing_ticket
-        
-        # Close the ticket
-        closed_ticket = await db.tickets.close_ticket(ticket_id)
-        
         return closed_ticket
+    except ValueError as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -304,7 +321,8 @@ async def close_ticket(
 async def add_message(
     message_data: MessageCreate,
     ticket_id: UUID = Path(..., description="Ticket UUID"),
-    db: DatabaseService = Depends(get_db_service)
+    db: DatabaseService = Depends(get_db_service),
+    redis: RedisService = Depends(get_redis)
 ) -> Message:
     """Add a new message to a ticket.
     
@@ -312,6 +330,7 @@ async def add_message(
         message_data: Message creation data
         ticket_id: Ticket UUID
         db: Database service dependency
+        redis: Redis service dependency
         
     Returns:
         Created message
@@ -320,38 +339,34 @@ async def add_message(
         HTTPException: If ticket is not found or message creation fails
     """
     try:
-        # Check if ticket exists
-        existing_ticket = await db.tickets.get_by_id(ticket_id)
-        if not existing_ticket:
-            raise HTTPException(
-                status_code=http_status.HTTP_404_NOT_FOUND,
-                detail=f"Ticket with ID {ticket_id} not found"
-            )
-        
-        # Check if ticket is closed
-        if existing_ticket.status == TicketStatus.CLOSED.value:
-            raise HTTPException(
-                status_code=http_status.HTTP_400_BAD_REQUEST,
-                detail="Cannot add messages to a closed ticket"
-            )
+        # Use the ticket service with Redis for real-time events
+        ticket_service = TicketService(db, redis)
         
         # Ensure the ticket_id in the path matches the one in the request body
         if message_data.ticket_id != ticket_id:
             message_data.ticket_id = ticket_id
         
-        # Create the message
-        message = await db.messages.create(
-            ticket_id=message_data.ticket_id,
-            content=message_data.content,
+        # Add the message
+        message = await ticket_service.add_ticket_message(
+            ticket_id=ticket_id,
             author_discord_id=message_data.author_discord_id,
-            discord_message_id=message_data.discord_message_id,
-            message_type=message_data.message_type
+            content=message_data.content,
+            message_type=MessageType(message_data.message_type),
+            discord_message_id=message_data.discord_message_id
         )
         
-        # Update the ticket's updated_at timestamp
-        await db.tickets.update(ticket_id, updated_at=message.created_at)
-        
         return message
+    except ValueError as e:
+        if "does not exist" in str(e):
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=str(e)
+            )
+        else:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
     except HTTPException:
         raise
     except Exception as e:
