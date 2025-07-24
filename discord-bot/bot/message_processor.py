@@ -4,8 +4,9 @@ import logging
 import discord
 from typing import Dict, Optional, Any
 
-from discord_bot.config.settings import config, logger
-from discord_bot.utils.http_client import get_api_client
+from config.settings import config, logger
+from utils.http_client import get_api_client
+from utils.sync_service import get_sync_service, SyncEvent, SyncEventType
 
 
 class MessageProcessor:
@@ -19,11 +20,15 @@ class MessageProcessor:
         """
         self.bot = bot
         self.api_client = None
+        self.sync_service = None
     
     async def initialize(self) -> None:
         """Initialize the message processor."""
         # Get API client
         self.api_client = await get_api_client()
+        
+        # Get sync service
+        self.sync_service = await get_sync_service(self.bot)
     
     async def process_message(
         self, 
@@ -72,19 +77,17 @@ class MessageProcessor:
                 })
             message_data["attachments"] = attachments
         
-        # Forward the message to the backend API
-        if self.api_client and self.api_client.connected:
-            try:
-                response = await self.api_client.post(
-                    f"/api/tickets/{ticket_id}/messages",
-                    data=message_data
-                )
-                logger.info(f"Forwarded message {message.id} to backend API")
-                return response
-            except Exception as e:
-                logger.error(f"Failed to forward message to backend API: {e}")
+        # Emit sync event for Discord-to-backend synchronization
+        if self.sync_service:
+            sync_event = SyncEvent(
+                event_type=SyncEventType.MESSAGE_CREATED,
+                data=message_data,
+                source="discord"
+            )
+            await self.sync_service.emit_event(sync_event)
+            logger.info(f"Emitted sync event for message {message.id}")
         
-        return None
+        return message_data
     
     async def format_message(self, message_data: Dict[str, Any]) -> str:
         """Format a message for display.

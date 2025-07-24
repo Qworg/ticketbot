@@ -9,15 +9,19 @@ import traceback
 # Add the parent directory to sys.path to allow imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from discord_bot.bot.ticket_bot import TicketBot
-from discord_bot.config.settings import config, logger
-from discord_bot.utils.http_client import get_api_client
-from discord_bot.utils.redis_client import get_redis_client
+from bot.ticket_bot import TicketBot
+from config.settings import config, logger
+from utils.http_client import get_api_client
+from utils.redis_client import get_redis_client
 
 
 # Register Redis event handlers
 async def register_redis_handlers(bot, redis_client):
     """Register handlers for Redis events."""
+    from utils.sync_service import get_sync_service, SyncEvent, SyncEventType
+    
+    # Get sync service
+    sync_service = await get_sync_service(bot)
     
     # Handler for ticket events
     async def handle_ticket_event(data):
@@ -30,21 +34,22 @@ async def register_redis_handlers(bot, redis_client):
         
         logger.info(f"Received ticket event: {event_type}")
         
-        # Update bot's ticket cache
+        # Convert to sync event and emit
+        sync_event_type = None
         if event_type == "ticket_created":
-            channel_id = ticket_data.get("discord_channel_id")
-            if channel_id:
-                bot.ticket_manager.active_tickets[channel_id] = ticket_data
-        
+            sync_event_type = SyncEventType.TICKET_CREATED
         elif event_type == "ticket_updated":
-            channel_id = ticket_data.get("discord_channel_id")
-            if channel_id:
-                bot.ticket_manager.active_tickets[channel_id] = ticket_data
-        
+            sync_event_type = SyncEventType.TICKET_UPDATED
         elif event_type == "ticket_closed":
-            channel_id = ticket_data.get("discord_channel_id")
-            if channel_id and channel_id in bot.ticket_manager.active_tickets:
-                del bot.ticket_manager.active_tickets[channel_id]
+            sync_event_type = SyncEventType.TICKET_CLOSED
+        
+        if sync_event_type:
+            sync_event = SyncEvent(
+                event_type=sync_event_type,
+                data=ticket_data,
+                source="backend"
+            )
+            await sync_service.emit_event(sync_event)
     
     # Handler for message events
     async def handle_message_event(data):
@@ -57,23 +62,14 @@ async def register_redis_handlers(bot, redis_client):
         
         logger.info(f"Received message event: {event_type}")
         
-        # Process the message if it's from the web dashboard
-        if event_type == "message_created" and message_data.get("source") == "dashboard":
-            ticket_id = message_data.get("ticket_id")
-            
-            # Find the ticket channel
-            channel_id = None
-            for cid, ticket in bot.ticket_manager.active_tickets.items():
-                if ticket.get("id") == ticket_id:
-                    channel_id = cid
-                    break
-            
-            if channel_id:
-                channel = bot.get_channel(channel_id)
-                if channel:
-                    # Format and send the message
-                    formatted_message = await bot.message_processor.format_message(message_data)
-                    await channel.send(formatted_message)
+        # Convert to sync event and emit
+        if event_type == "message_created":
+            sync_event = SyncEvent(
+                event_type=SyncEventType.MESSAGE_CREATED,
+                data=message_data,
+                source="backend"
+            )
+            await sync_service.emit_event(sync_event)
     
     # Register the handlers
     redis_client.register_handler("ticket_events", handle_ticket_event)
