@@ -1,7 +1,7 @@
 [project]
 name = "discord-bot"
 version = "0.1.0"
-description = "Add your description here"
+description = "Discord bot for ticket management system"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -15,3 +15,13 @@ dependencies = [
     "redis==5.0.1",
     "sqlalchemy==2.0.23",
 ]
+
+[project.scripts]
+discord-bot = "discord_bot.main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+asyncio_mode = "auto"

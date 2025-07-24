@@ -1,0 +1,1 @@
+"""Bot module for the Discord ticket bot."""

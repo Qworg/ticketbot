@@ -1,143 +1,178 @@
 """Discord Bot for Ticket Management System."""
 
-import os
-import logging
 import asyncio
-from typing import Optional
+import sys
+import os
+import signal
+import traceback
 
-import discord
-from discord import app_commands
-from discord.ext import commands
-from dotenv import load_dotenv
+# Add the parent directory to sys.path to allow imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-)
-logger = logging.getLogger("discord-bot")
-
-# Load environment variables
-load_dotenv()
-
-# Bot configuration
-DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID")
-
-if not DISCORD_BOT_TOKEN:
-    logger.error("DISCORD_BOT_TOKEN not found in environment variables")
-    exit(1)
-
-if not DISCORD_GUILD_ID:
-    logger.warning("DISCORD_GUILD_ID not found in environment variables, bot will not auto-sync commands")
+from discord_bot.bot.ticket_bot import TicketBot
+from discord_bot.config.settings import config, logger
+from discord_bot.utils.http_client import get_api_client
+from discord_bot.utils.redis_client import get_redis_client
 
 
-# Initialize bot with all intents
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-
-@bot.event
-async def on_ready():
-    """Event triggered when the bot is ready."""
-    logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
-    logger.info(f"Connected to {len(bot.guilds)} guilds")
+# Register Redis event handlers
+async def register_redis_handlers(bot, redis_client):
+    """Register handlers for Redis events."""
     
-    # Sync commands with Discord
-    if DISCORD_GUILD_ID:
-        guild = discord.Object(id=int(DISCORD_GUILD_ID))
-        bot.tree.copy_global_to(guild=guild)
-        await bot.tree.sync(guild=guild)
-        logger.info(f"Synced commands to guild ID: {DISCORD_GUILD_ID}")
-    
-    # Set bot status
-    await bot.change_presence(
-        activity=discord.Activity(
-            type=discord.ActivityType.watching, 
-            name="for support tickets"
-        )
-    )
-
-
-@bot.tree.command(name="ping", description="Check if the bot is responsive")
-async def ping(interaction: discord.Interaction):
-    """Simple command to check if the bot is responsive."""
-    await interaction.response.send_message(
-        f"Pong! Bot latency: {round(bot.latency * 1000)}ms"
-    )
-
-
-@bot.tree.command(name="ticket", description="Manage support tickets")
-@app_commands.describe(
-    action="The action to perform (create, close, assign)",
-    subject="Subject of the ticket (for create action)",
-    user="User to assign the ticket to (for assign action)"
-)
-async def ticket(
-    interaction: discord.Interaction, 
-    action: str,
-    subject: Optional[str] = None,
-    user: Optional[discord.Member] = None
-):
-    """Command group for ticket management."""
-    if action == "create":
-        if not subject:
-            await interaction.response.send_message(
-                "Please provide a subject for your ticket.", 
-                ephemeral=True
-            )
+    # Handler for ticket events
+    async def handle_ticket_event(data):
+        """Handle ticket events from Redis."""
+        event_type = data.get("event_type")
+        ticket_data = data.get("ticket")
+        
+        if not ticket_data:
             return
-            
-        await interaction.response.send_message(
-            f"Creating ticket: {subject}... (This is a placeholder, actual implementation coming soon)",
-            ephemeral=True
-        )
+        
+        logger.info(f"Received ticket event: {event_type}")
+        
+        # Update bot's ticket cache
+        if event_type == "ticket_created":
+            channel_id = ticket_data.get("discord_channel_id")
+            if channel_id:
+                bot.ticket_manager.active_tickets[channel_id] = ticket_data
+        
+        elif event_type == "ticket_updated":
+            channel_id = ticket_data.get("discord_channel_id")
+            if channel_id:
+                bot.ticket_manager.active_tickets[channel_id] = ticket_data
+        
+        elif event_type == "ticket_closed":
+            channel_id = ticket_data.get("discord_channel_id")
+            if channel_id and channel_id in bot.ticket_manager.active_tickets:
+                del bot.ticket_manager.active_tickets[channel_id]
     
-    elif action == "close":
-        await interaction.response.send_message(
-            "Closing this ticket... (This is a placeholder, actual implementation coming soon)",
-            ephemeral=True
-        )
-    
-    elif action == "assign":
-        if not user:
-            await interaction.response.send_message(
-                "Please specify a user to assign this ticket to.",
-                ephemeral=True
-            )
+    # Handler for message events
+    async def handle_message_event(data):
+        """Handle message events from Redis."""
+        event_type = data.get("event_type")
+        message_data = data.get("message")
+        
+        if not message_data:
             return
+        
+        logger.info(f"Received message event: {event_type}")
+        
+        # Process the message if it's from the web dashboard
+        if event_type == "message_created" and message_data.get("source") == "dashboard":
+            ticket_id = message_data.get("ticket_id")
             
-        await interaction.response.send_message(
-            f"Assigning ticket to {user.mention}... (This is a placeholder, actual implementation coming soon)",
-            ephemeral=True
-        )
+            # Find the ticket channel
+            channel_id = None
+            for cid, ticket in bot.ticket_manager.active_tickets.items():
+                if ticket.get("id") == ticket_id:
+                    channel_id = cid
+                    break
+            
+            if channel_id:
+                channel = bot.get_channel(channel_id)
+                if channel:
+                    # Format and send the message
+                    formatted_message = await bot.message_processor.format_message(message_data)
+                    await channel.send(formatted_message)
     
-    else:
-        await interaction.response.send_message(
-            "Invalid action. Available actions: create, close, assign",
-            ephemeral=True
-        )
-
-
-@bot.event
-async def on_message(message):
-    """Event triggered when a message is sent."""
-    # Ignore messages from the bot itself
-    if message.author == bot.user:
-        return
-    
-    # Process commands
-    await bot.process_commands(message)
+    # Register the handlers
+    redis_client.register_handler("ticket_events", handle_ticket_event)
+    redis_client.register_handler("message_events", handle_message_event)
 
 
 async def main():
     """Main entry point for the Discord bot."""
-    async with bot:
-        await bot.start(DISCORD_BOT_TOKEN)
+    # Create resources
+    bot = None
+    api_client = None
+    redis_client = None
+    
+    try:
+        # Create the bot instance
+        logger.info("Creating Discord bot instance...")
+        bot = TicketBot()
+        
+        # Initialize API client
+        logger.info("Initializing API client...")
+        api_client = await get_api_client()
+        if api_client.connected:
+            logger.info("Connected to backend API")
+            bot.health_status["backend_connected"] = True
+        else:
+            logger.warning("Failed to connect to backend API")
+            bot.health_status["backend_connected"] = False
+        
+        # Initialize Redis client
+        logger.info("Initializing Redis client...")
+        redis_client = await get_redis_client()
+        if redis_client.connected:
+            logger.info("Connected to Redis")
+            bot.health_status["redis_connected"] = True
+            
+            # Subscribe to channels
+            await redis_client.subscribe([
+                "ticket_events",
+                "message_events",
+                "system_events"
+            ])
+            
+            # Register Redis event handlers
+            await register_redis_handlers(bot, redis_client)
+            
+            # Start listener
+            await redis_client.start_listener()
+        else:
+            logger.warning("Failed to connect to Redis")
+            bot.health_status["redis_connected"] = False
+        
+        # Set up signal handlers for graceful shutdown
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown(bot, api_client, redis_client)))
+            except NotImplementedError:
+                # Windows doesn't support SIGINT/SIGTERM properly
+                pass
+        
+        # Start the bot
+        logger.info("Starting Discord bot...")
+        await bot.start(config.token)
+    except KeyboardInterrupt:
+        logger.info("Received keyboard interrupt, shutting down...")
+    except Exception as e:
+        logger.error(f"Error starting bot: {e}")
+        logger.error(traceback.format_exc())
+    finally:
+        # Clean up resources if not already done by signal handler
+        await cleanup(bot, api_client, redis_client)
+
+
+async def shutdown(bot, api_client, redis_client):
+    """Handle graceful shutdown."""
+    logger.info("Shutdown signal received, cleaning up...")
+    await cleanup(bot, api_client, redis_client)
+    # Force exit after cleanup
+    os._exit(0)
+
+
+async def cleanup(bot, api_client, redis_client):
+    """Clean up resources."""
+    # Close Redis client
+    if redis_client:
+        logger.info("Closing Redis client...")
+        await redis_client.close()
+    
+    # Close API client
+    if api_client:
+        logger.info("Closing API client...")
+        await api_client.close()
+    
+    # Close the bot
+    if bot and not (hasattr(bot, "is_closed") and bot.is_closed()):
+        logger.info("Closing Discord bot...")
+        await bot.close()
 
 
 if __name__ == "__main__":
+    import discord
     asyncio.run(main())
