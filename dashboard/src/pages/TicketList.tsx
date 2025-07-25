@@ -24,15 +24,20 @@ import {
   Alert,
   Tooltip,
   TableSortLabel,
+  Badge,
+  Snackbar,
 } from '@mui/material';
 import {
   Visibility as ViewIcon,
   FilterList as FilterIcon,
   Clear as ClearIcon,
+  Wifi as ConnectedIcon,
+  WifiOff as DisconnectedIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ticketService } from '../services/ticketService';
+import { useWebSocket } from '../hooks/useWebSocket';
 import { Ticket, TicketStatus, Priority, TicketFilters, PaginatedResponse } from '../types';
 
 interface SortConfig {
@@ -42,6 +47,8 @@ interface SortConfig {
 
 const TicketList: React.FC = () => {
   const navigate = useNavigate();
+  const { subscribe, isConnected, notifications, clearNotifications, markNotificationAsRead } = useWebSocket();
+  
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +62,10 @@ const TicketList: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<TicketStatus[]>([]);
   const [priorityFilter, setPriorityFilter] = useState<Priority[]>([]);
+  
+  // Notification states
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
 
   const fetchTickets = useCallback(async () => {
     try {
@@ -86,6 +97,38 @@ const TicketList: React.FC = () => {
   useEffect(() => {
     fetchTickets();
   }, [fetchTickets]);
+
+  // Set up real-time subscriptions
+  useEffect(() => {
+    const unsubscribeTicketCreated = subscribe('ticket_created', (data: Ticket) => {
+      setTickets(prev => [data, ...prev]);
+      setTotalCount(prev => prev + 1);
+      setSnackbarMessage(`New ticket created: ${data.title}`);
+      setSnackbarOpen(true);
+    });
+
+    const unsubscribeTicketUpdated = subscribe('ticket_updated', (data: Ticket) => {
+      setTickets(prev => prev.map(ticket => 
+        ticket.id === data.id ? data : ticket
+      ));
+      setSnackbarMessage(`Ticket updated: ${data.title}`);
+      setSnackbarOpen(true);
+    });
+
+    const unsubscribeTicketClosed = subscribe('ticket_closed', (data: Ticket) => {
+      setTickets(prev => prev.map(ticket => 
+        ticket.id === data.id ? data : ticket
+      ));
+      setSnackbarMessage(`Ticket closed: ${data.title}`);
+      setSnackbarOpen(true);
+    });
+
+    return () => {
+      unsubscribeTicketCreated();
+      unsubscribeTicketUpdated();
+      unsubscribeTicketClosed();
+    };
+  }, [subscribe]);
 
   const handleSort = (field: keyof Ticket) => {
     setSortConfig(prev => ({
@@ -162,6 +205,10 @@ const TicketList: React.FC = () => {
     navigate(`/tickets/${ticketId}`);
   };
 
+  const handleCloseSnackbar = () => {
+    setSnackbarOpen(false);
+  };
+
   if (error) {
     return (
       <Box>
@@ -177,9 +224,25 @@ const TicketList: React.FC = () => {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Tickets
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+        <Typography variant="h4">
+          Tickets
+        </Typography>
+        
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Tooltip title={isConnected ? 'Connected' : 'Disconnected'}>
+            <IconButton color={isConnected ? 'success' : 'error'}>
+              {isConnected ? <ConnectedIcon /> : <DisconnectedIcon />}
+            </IconButton>
+          </Tooltip>
+          
+          <Badge badgeContent={notifications.length} color="primary">
+            <Typography variant="body2" color="text.secondary">
+              {notifications.length} notifications
+            </Typography>
+          </Badge>
+        </Box>
+      </Box>
 
       {/* Filters */}
       <Card sx={{ mb: 3 }}>
@@ -392,6 +455,15 @@ const TicketList: React.FC = () => {
           rowsPerPageOptions={[5, 10, 25, 50]}
         />
       </Paper>
+
+      {/* Real-time notification snackbar */}
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={4000}
+        onClose={handleCloseSnackbar}
+        message={snackbarMessage}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      />
     </Box>
   );
 };
