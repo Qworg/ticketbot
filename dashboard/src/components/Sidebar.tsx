@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useLocation } from 'react-router-dom';
 import {
   Drawer,
   List,
@@ -10,15 +10,23 @@ import {
   Toolbar,
   Divider,
 } from '@mui/material';
-
-// Placeholder icons (replace with actual MUI icons in implementation)
-const DashboardIcon = () => <span>📊</span>;
-const TicketsIcon = () => <span>🎫</span>;
-const SearchIcon = () => <span>🔍</span>;
+import {
+  Dashboard as DashboardIcon,
+  ConfirmationNumber as TicketsIcon,
+  Search as SearchIcon,
+} from '@mui/icons-material';
 
 const drawerWidth = 240;
 
 const Sidebar: React.FC = () => {
+  const location = useLocation();
+
+  const menuItems = [
+    { path: '/', label: 'Dashboard', icon: <DashboardIcon /> },
+    { path: '/tickets', label: 'Tickets', icon: <TicketsIcon /> },
+    { path: '/search', label: 'Search Transcripts', icon: <SearchIcon /> },
+  ];
+
   return (
     <Drawer
       variant="permanent"
@@ -30,32 +38,20 @@ const Sidebar: React.FC = () => {
     >
       <Toolbar />
       <List>
-        <ListItem disablePadding>
-          <ListItemButton component={RouterLink} to="/">
-            <ListItemIcon>
-              <DashboardIcon />
-            </ListItemIcon>
-            <ListItemText primary="Dashboard" />
-          </ListItemButton>
-        </ListItem>
-        
-        <ListItem disablePadding>
-          <ListItemButton component={RouterLink} to="/tickets">
-            <ListItemIcon>
-              <TicketsIcon />
-            </ListItemIcon>
-            <ListItemText primary="Tickets" />
-          </ListItemButton>
-        </ListItem>
-        
-        <ListItem disablePadding>
-          <ListItemButton component={RouterLink} to="/search">
-            <ListItemIcon>
-              <SearchIcon />
-            </ListItemIcon>
-            <ListItemText primary="Search Transcripts" />
-          </ListItemButton>
-        </ListItem>
+        {menuItems.map((item) => (
+          <ListItem key={item.path} disablePadding>
+            <ListItemButton 
+              component={RouterLink} 
+              to={item.path}
+              selected={location.pathname === item.path}
+            >
+              <ListItemIcon>
+                {item.icon}
+              </ListItemIcon>
+              <ListItemText primary={item.label} />
+            </ListItemButton>
+          </ListItem>
+        ))}
       </List>
       <Divider />
     </Drawer>
