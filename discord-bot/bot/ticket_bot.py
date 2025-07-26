@@ -12,6 +12,8 @@ from discord_bot.config.settings import config, logger
 from discord_bot.bot.ticket_manager import TicketManager
 from discord_bot.bot.permission_manager import PermissionManager
 from discord_bot.bot.message_processor import MessageProcessor
+from discord_bot.bot.error_handler import ErrorHandler, handle_discord_errors, handle_rate_limits
+from discord_bot.bot.exceptions import DiscordBotException, ConfigurationError
 
 class TicketBot(commands.Bot):
     """Main Discord bot class for ticket management."""
@@ -52,6 +54,9 @@ class TicketBot(commands.Bot):
         self.ticket_manager = TicketManager(self)
         self.permission_manager = PermissionManager(self)
         self.message_processor = MessageProcessor(self)
+        
+        # Initialize error handler
+        self.error_handler = ErrorHandler(self)
         
         # Register error handlers
         self.tree.on_error = self.on_app_command_error
@@ -98,35 +103,12 @@ class TicketBot(commands.Bot):
     async def on_app_command_error(
         self, 
         interaction: discord.Interaction, 
-        error: discord.app_commands.AppCommandError
+        error: discord.ApplicationCommandError
     ) -> None:
         """Handle errors in application commands."""
-        if isinstance(error, discord.app_commands.CommandOnCooldown):
-            await interaction.response.send_message(
-                f"This command is on cooldown. Try again in {error.retry_after:.2f} seconds.",
-                ephemeral=True
-            )
-        elif isinstance(error, discord.app_commands.MissingPermissions):
-            await interaction.response.send_message(
-                "You don't have permission to use this command.",
-                ephemeral=True
-            )
-        else:
-            # Log the error
-            logger.error(f"Error in command {interaction.command.name}: {error}")
-            
-            # Send a generic error message
-            if interaction.response.is_done():
-                await interaction.followup.send(
-                    "An error occurred while processing this command. Please try again later.",
-                    ephemeral=True
-                )
-            else:
-                await interaction.response.send_message(
-                    "An error occurred while processing this command. Please try again later.",
-                    ephemeral=True
-                )
+        await self.error_handler.handle_command_error(interaction, error)
     
+    @handle_rate_limits(max_retries=3, base_delay=5.0)
     async def sync_commands(self) -> None:
         """Sync application commands with Discord."""
         try:
@@ -143,18 +125,15 @@ class TicketBot(commands.Bot):
             
             self.synced = True
             self.health_status["commands_synced"] = True
-        except discord.HTTPException as e:
-            logger.error(f"HTTP error syncing commands: {e}")
-            self.health_status["commands_synced"] = False
-        except discord.Forbidden as e:
-            logger.error(f"Permission error syncing commands: {e}")
-            self.health_status["commands_synced"] = False
         except Exception as e:
-            logger.error(f"Failed to sync commands: {e}")
-            # Log the full traceback
-            import traceback
-            logger.error(traceback.format_exc())
             self.health_status["commands_synced"] = False
+            # Let the error handler deal with it
+            handled = await self.error_handler.handle_discord_error(
+                e, context={"operation": "sync_commands"}
+            )
+            if not handled:
+                logger.error(f"Failed to sync commands: {e}", exc_info=True)
+                raise
     
     async def on_ready(self) -> None:
         """Event triggered when the bot is ready."""
@@ -224,10 +203,25 @@ class TicketBot(commands.Bot):
     
     async def on_error(self, event_method: str, *args, **kwargs) -> None:
         """Handle errors that occur in event handlers."""
-        logger.error(f"Error in {event_method}: {args} {kwargs}")
-        # Log the full traceback
-        import traceback
-        logger.error(traceback.format_exc())
+        # Extract the actual exception from args
+        exc_info = sys.exc_info()
+        if exc_info[1]:
+            error = exc_info[1]
+            context = {
+                "event_method": event_method,
+                "args_count": len(args),
+                "kwargs_keys": list(kwargs.keys())
+            }
+            
+            # Try to handle with error handler
+            handled = await self.error_handler.handle_discord_error(
+                error, context=context
+            )
+            
+            if not handled:
+                logger.error(f"Unhandled error in {event_method}: {error}", exc_info=True)
+        else:
+            logger.error(f"Error in {event_method}: {args} {kwargs}")
     
     async def register_basic_commands(self) -> None:
         """Register basic bot commands."""

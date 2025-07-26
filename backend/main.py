@@ -1,20 +1,49 @@
 """FastAPI backend for Discord Ticket Bot."""
 
 import asyncio
-from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect
+import logging
+import uuid
+from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from backend.routes import tickets_router, transcripts_router
 from backend.routes.auth import router as auth_router
 from backend.db import check_db_connection
 from backend.services.redis_service import get_redis, RedisService
 from backend.services.websocket_manager import websocket_endpoint, get_websocket_token
+from backend.error_handlers import setup_error_handlers
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    """Middleware to add unique request IDs for tracing."""
+    
+    async def dispatch(self, request: Request, call_next):
+        request_id = str(uuid.uuid4())
+        request.state.request_id = request_id
+        
+        # Add request ID to response headers
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        
+        return response
+
 
 app = FastAPI(
     title="Discord Ticket Bot API",
     description="REST API for Discord ticket management system",
     version="1.0.0"
 )
+
+# Add request ID middleware
+app.add_middleware(RequestIDMiddleware)
 
 # Configure CORS
 app.add_middleware(
@@ -24,6 +53,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Set up error handlers
+setup_error_handlers(app)
 
 # Include API routers
 app.include_router(auth_router)

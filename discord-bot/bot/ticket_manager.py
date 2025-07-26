@@ -8,6 +8,8 @@ from typing import Dict, List, Optional, Any
 from config.settings import config, logger
 from utils.http_client import get_api_client
 from utils.sync_service import get_sync_service, SyncEvent, SyncEventType
+from bot.error_handler import handle_discord_errors, handle_rate_limits, graceful_degradation
+from bot.exceptions import TicketError, BackendConnectionError, ChannelError, ConfigurationError
 
 
 class TicketManager:
@@ -37,11 +39,11 @@ class TicketManager:
         # Load active tickets from the database
         await self.load_active_tickets()
     
+    @graceful_degradation(fallback_value=None, log_errors=True)
     async def load_active_tickets(self) -> None:
         """Load active tickets from the database."""
         if not self.api_client or not self.api_client.connected:
-            logger.warning("Cannot load active tickets: API client not connected")
-            return
+            raise BackendConnectionError("API client not connected")
         
         try:
             # Get active tickets from the API
@@ -55,7 +57,10 @@ class TicketManager:
             
             logger.info(f"Loaded {len(self.active_tickets)} active tickets")
         except Exception as e:
-            logger.error(f"Failed to load active tickets: {e}")
+            raise BackendConnectionError(
+                f"Failed to load active tickets: {str(e)}",
+                endpoint="/api/tickets"
+            )
     
     async def get_ticket_category(self) -> Optional[discord.CategoryChannel]:
         """Get the ticket category channel.
@@ -64,14 +69,19 @@ class TicketManager:
             The ticket category channel or None if not found
         """
         if not self.ticket_category_id:
-            logger.warning("Ticket category ID not configured")
-            return None
+            raise ConfigurationError(
+                "Ticket category ID not configured",
+                config_key="ticket_category_id"
+            )
         
         # Get the category channel
         category = self.bot.get_channel(self.ticket_category_id)
         if not category:
-            logger.warning(f"Ticket category not found: {self.ticket_category_id}")
-            return None
+            raise ChannelError(
+                f"Ticket category not found: {self.ticket_category_id}",
+                channel_id=self.ticket_category_id,
+                channel_type="category"
+            )
         
         return category
     
@@ -85,14 +95,16 @@ class TicketManager:
             The staff role or None if not found
         """
         if not self.staff_role_id:
-            logger.warning("Staff role ID not configured")
-            return None
+            raise ConfigurationError(
+                "Staff role ID not configured",
+                config_key="staff_role_id"
+            )
         
         # Get the staff role
         role = guild.get_role(self.staff_role_id)
         if not role:
             logger.warning(f"Staff role not found: {self.staff_role_id}")
-            return None
+            return None  # This is not critical, so we return None instead of raising
         
         return role
     
@@ -126,6 +138,8 @@ class TicketManager:
         
         return None
     
+    @handle_discord_errors(user_message="Failed to create ticket. Please try again.")
+    @handle_rate_limits(max_retries=2, base_delay=2.0)
     async def create_ticket(self, 
                            guild: discord.Guild,
                            user: discord.Member,
@@ -142,21 +156,31 @@ class TicketManager:
         Returns:
             Created ticket data or None if creation failed
         """
+        # Get ticket category
+        category = await self.get_ticket_category()
+        
+        # Create Discord channel
+        channel_name = f"ticket-{user.name}-{len(self.active_tickets) + 1}"
         try:
-            # Get ticket category
-            category = await self.get_ticket_category()
-            if not category:
-                logger.error("Cannot create ticket: no ticket category configured")
-                return None
-            
-            # Create Discord channel
-            channel_name = f"ticket-{user.name}-{len(self.active_tickets) + 1}"
             channel = await guild.create_text_channel(
                 name=channel_name,
                 category=category,
                 topic=f"Ticket: {title}"
             )
-            
+        except discord.Forbidden:
+            raise ChannelError(
+                "No permission to create channels",
+                channel_type="text",
+                details={"guild_id": guild.id, "category_id": category.id}
+            )
+        except discord.HTTPException as e:
+            raise ChannelError(
+                f"Failed to create channel: {str(e)}",
+                channel_type="text",
+                details={"guild_id": guild.id, "status_code": e.status}
+            )
+        
+        try:
             # Set channel permissions
             await self._set_ticket_permissions(channel, user)
             
@@ -170,47 +194,52 @@ class TicketManager:
             }
             
             # Create ticket via API
-            if self.api_client and self.api_client.connected:
-                try:
-                    created_ticket = await self.api_client.create_ticket(ticket_data)
-                    
-                    # Update local cache
-                    self.active_tickets[channel.id] = created_ticket
-                    
-                    # Emit sync event
-                    if self.sync_service:
-                        sync_event = SyncEvent(
-                            event_type=SyncEventType.TICKET_CREATED,
-                            data=created_ticket,
-                            source="discord"
-                        )
-                        await self.sync_service.emit_event(sync_event)
-                    
-                    # Send welcome message
-                    await channel.send(
-                        f"🎫 **Ticket Created**\n"
-                        f"**Title:** {title}\n"
-                        f"**Created by:** {user.mention}\n"
-                        f"**Ticket ID:** {created_ticket.get('id')}\n\n"
-                        f"Please describe your issue and a staff member will assist you shortly."
-                    )
-                    
-                    logger.info(f"Created ticket {created_ticket.get('id')} in channel {channel.id}")
-                    return created_ticket
-                    
-                except Exception as e:
-                    logger.error(f"Failed to create ticket via API: {e}")
-                    # Clean up Discord channel
-                    await channel.delete()
-                    return None
-            else:
-                logger.error("Cannot create ticket: API client not connected")
-                await channel.delete()
-                return None
-                
+            if not self.api_client or not self.api_client.connected:
+                raise BackendConnectionError("API client not connected")
+            
+            created_ticket = await self.api_client.create_ticket(ticket_data)
+            
+            # Update local cache
+            self.active_tickets[channel.id] = created_ticket
+            
+            # Emit sync event
+            if self.sync_service:
+                sync_event = SyncEvent(
+                    event_type=SyncEventType.TICKET_CREATED,
+                    data=created_ticket,
+                    source="discord"
+                )
+                await self.sync_service.emit_event(sync_event)
+            
+            # Send welcome message
+            await channel.send(
+                f"🎫 **Ticket Created**\n"
+                f"**Title:** {title}\n"
+                f"**Created by:** {user.mention}\n"
+                f"**Ticket ID:** {created_ticket.get('id')}\n\n"
+                f"Please describe your issue and a staff member will assist you shortly."
+            )
+            
+            logger.info(f"Created ticket {created_ticket.get('id')} in channel {channel.id}")
+            return created_ticket
+            
         except Exception as e:
-            logger.error(f"Failed to create ticket: {e}")
-            return None
+            # Clean up Discord channel on failure
+            try:
+                await channel.delete()
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to cleanup channel after error: {cleanup_error}")
+            
+            # Re-raise the original error
+            if isinstance(e, (BackendConnectionError, TicketError)):
+                raise
+            else:
+                raise TicketError(
+                    f"Failed to create ticket: {str(e)}",
+                    operation="create",
+                    channel_id=channel.id,
+                    details={"user_id": user.id, "guild_id": guild.id}
+                )
     
     async def update_ticket(self, 
                            channel_id: int,
