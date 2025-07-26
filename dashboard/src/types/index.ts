@@ -93,3 +93,27 @@ export interface WebSocketMessage {
   data: any;
   timestamp: string;
 }
+
+export interface TranscriptSearchFilters {
+  search: string;
+  search_mode?: 'basic' | 'fuzzy' | 'exact';
+  created_after?: string;
+  created_before?: string;
+  staff_id?: number;
+  status?: TicketStatus;
+  highlight_results?: boolean;
+}
+
+export interface TranscriptSearchResult {
+  id: string;
+  ticket_id: string;
+  ticket_title: string;
+  content: string;
+  formatted_content?: any;
+  share_token?: string;
+  created_at: string;
+  updated_at: string;
+  context_snippets?: string[];
+  highlighted_content?: string;
+  relevance_score?: number;
+}
