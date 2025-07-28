@@ -10,10 +10,15 @@ echo "🚀 Starting Discord Ticket Bot Development Environment..."
 # Check if .env file exists
 if [ ! -f .env ]; then
     echo "⚠️  .env file not found. Creating from template..."
-    cp .env.template .env
-    echo "📝 Please edit .env file with your configuration before continuing."
-    echo "   Required: DISCORD_BOT_TOKEN, DISCORD_GUILD_ID"
-    exit 1
+    if [ -f .env.template ]; then
+        cp .env.template .env
+        echo "📝 Please edit .env file with your configuration before continuing."
+        echo "   Required: DISCORD_BOT_TOKEN, DISCORD_GUILD_ID"
+        exit 1
+    else
+        echo "❌ .env.template not found. Please create .env file manually."
+        exit 1
+    fi
 fi
 
 # Check if Docker is running
@@ -22,30 +27,16 @@ if ! docker info > /dev/null 2>&1; then
     exit 1
 fi
 
-# Build and start services
-echo "🔨 Building Docker containers..."
-docker-compose build
+# Use the deployment script for development
+echo "🔨 Building and starting services..."
+./deploy.sh -e development --build
 
-echo "🗄️  Starting database and Redis..."
-docker-compose up -d postgres redis
+echo "⏳ Waiting for services to be ready..."
+sleep 10
 
-# Wait for database to be ready
-echo "⏳ Waiting for database to be ready..."
-timeout=30
-while ! docker-compose exec -T postgres pg_isready -U ticketbot > /dev/null 2>&1; do
-    timeout=$((timeout - 1))
-    if [ $timeout -eq 0 ]; then
-        echo "❌ Database failed to start within 30 seconds"
-        exit 1
-    fi
-    sleep 1
-done
-
-echo "🔄 Running database migrations..."
-docker-compose exec -T backend alembic upgrade head
-
-echo "🎯 Starting all services..."
-docker-compose up -d
+# Run health check
+echo "🏥 Running health checks..."
+./health-check.sh -e development
 
 echo "✅ Development environment started successfully!"
 echo ""
@@ -56,6 +47,6 @@ echo "   📚 API Docs:      http://localhost:8000/docs"
 echo "   🗄️  Database:      localhost:5432"
 echo "   🔴 Redis:         localhost:6379"
 echo ""
-echo "📊 To view logs: docker-compose logs -f [service_name]"
+echo "📊 To view logs: docker-compose -f docker-compose.dev.yml logs -f [service_name]"
 echo "🛑 To stop:      ./stop.sh"
 echo "🔄 To reset DB:  ./reset-db.sh"

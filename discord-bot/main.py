@@ -5,14 +5,110 @@ import sys
 import os
 import signal
 import traceback
+import threading
+import time
+from datetime import datetime
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import json
 
 # Add the parent directory to sys.path to allow imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from bot.ticket_bot import TicketBot
-from config.settings import config, logger
+from config.settings import config
 from utils.http_client import get_api_client
 from utils.redis_client import get_redis_client
+from logging_config import setup_logging, get_logger, bot_metrics_collector
+
+# Set up logging
+setup_logging()
+logger = get_logger(__name__)
+
+
+# Global health status
+health_status = {
+    "status": "starting",
+    "discord_connected": False,
+    "backend_connected": False,
+    "redis_connected": False,
+    "start_time": datetime.utcnow(),
+    "last_heartbeat": datetime.utcnow(),
+}
+
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    """HTTP handler for health check endpoint."""
+    
+    def do_GET(self):
+        """Handle GET requests."""
+        if self.path == "/health":
+            self.send_health_response()
+        elif self.path == "/metrics":
+            self.send_metrics_response()
+        else:
+            self.send_response(404)
+            self.end_headers()
+    
+    def send_health_response(self):
+        """Send health check response."""
+        global health_status
+        
+        # Update last heartbeat
+        health_status["last_heartbeat"] = datetime.utcnow()
+        
+        # Determine overall status
+        is_healthy = (
+            health_status["discord_connected"] and
+            health_status["backend_connected"] and
+            health_status["redis_connected"]
+        )
+        
+        health_status["status"] = "healthy" if is_healthy else "unhealthy"
+        
+        # Calculate uptime
+        uptime = datetime.utcnow() - health_status["start_time"]
+        health_status["uptime_seconds"] = uptime.total_seconds()
+        
+        # Prepare response
+        response_data = {
+            **health_status,
+            "service": "discord-ticket-bot",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "start_time": health_status["start_time"].isoformat() + "Z",
+            "last_heartbeat": health_status["last_heartbeat"].isoformat() + "Z",
+        }
+        
+        # Send response
+        self.send_response(200 if is_healthy else 503)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(response_data).encode())
+    
+    def send_metrics_response(self):
+        """Send metrics response."""
+        metrics = bot_metrics_collector.get_metrics()
+        
+        response_data = {
+            "service": "discord-ticket-bot",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "metrics": metrics
+        }
+        
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(response_data).encode())
+    
+    def log_message(self, format, *args):
+        """Override to suppress HTTP server logs."""
+        pass
+
+
+def start_health_server():
+    """Start health check HTTP server in a separate thread."""
+    server = HTTPServer(("0.0.0.0", 8080), HealthCheckHandler)
+    logger.info("Health check server started on port 8080")
+    server.serve_forever()
 
 
 # Register Redis event handlers
@@ -78,6 +174,12 @@ async def register_redis_handlers(bot, redis_client):
 
 async def main():
     """Main entry point for the Discord bot."""
+    global health_status
+    
+    # Start health check server in background thread
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
+    
     # Create resources
     bot = None
     api_client = None
@@ -93,17 +195,19 @@ async def main():
         api_client = await get_api_client()
         if api_client.connected:
             logger.info("Connected to backend API")
-            bot.health_status["backend_connected"] = True
+            health_status["backend_connected"] = True
+            bot_metrics_collector.increment_api_calls()
         else:
             logger.warning("Failed to connect to backend API")
-            bot.health_status["backend_connected"] = False
+            health_status["backend_connected"] = False
+            bot_metrics_collector.increment_errors()
         
         # Initialize Redis client
         logger.info("Initializing Redis client...")
         redis_client = await get_redis_client()
         if redis_client.connected:
             logger.info("Connected to Redis")
-            bot.health_status["redis_connected"] = True
+            health_status["redis_connected"] = True
             
             # Subscribe to channels
             await redis_client.subscribe([
@@ -119,7 +223,8 @@ async def main():
             await redis_client.start_listener()
         else:
             logger.warning("Failed to connect to Redis")
-            bot.health_status["redis_connected"] = False
+            health_status["redis_connected"] = False
+            bot_metrics_collector.increment_errors()
         
         # Set up signal handlers for graceful shutdown
         loop = asyncio.get_running_loop()
@@ -130,14 +235,23 @@ async def main():
                 # Windows doesn't support SIGINT/SIGTERM properly
                 pass
         
+        # Update health status
+        health_status["status"] = "running"
+        
         # Start the bot
         logger.info("Starting Discord bot...")
         await bot.start(config.token)
+        
+        # Update health status when connected
+        health_status["discord_connected"] = True
+        bot_metrics_collector.set_guild_count(len(bot.guilds))
+        
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt, shutting down...")
     except Exception as e:
-        logger.error(f"Error starting bot: {e}")
-        logger.error(traceback.format_exc())
+        logger.error(f"Error starting bot: {e}", exc_info=True)
+        bot_metrics_collector.increment_errors()
+        health_status["status"] = "error"
     finally:
         # Clean up resources if not already done by signal handler
         await cleanup(bot, api_client, redis_client)

@@ -18,7 +18,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
@@ -32,7 +31,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 5s
-    restart: unless-stopped
     command: redis-server --appendonly yes
 
   backend:
@@ -45,7 +43,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-ticketbot}:${POSTGRES_PASSWORD:-ticketbot_dev}@postgres:5432/${POSTGRES_DB:-ticketbot}
       - REDIS_URL=redis://redis:6379
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=development
     env_file:
       - .env
     depends_on:
@@ -53,7 +51,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    restart: unless-stopped
+    volumes:
+      - ./backend:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -70,7 +70,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-ticketbot}:${POSTGRES_PASSWORD:-ticketbot_dev}@postgres:5432/${POSTGRES_DB:-ticketbot}
       - REDIS_URL=redis://redis:6379
       - BACKEND_URL=http://backend:8000
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=development
     env_file:
       - .env
     depends_on:
@@ -80,27 +80,24 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
-    restart: unless-stopped
+    volumes:
+      - ./discord-bot:/app
 
   dashboard:
     build:
       context: ./dashboard
       dockerfile: Dockerfile
-      target: production
+      target: development
     ports:
-      - "${DASHBOARD_PORT:-3000}:80"
+      - "${DASHBOARD_PORT:-3000}:3000"
     environment:
-      - REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:8000}
-      - REACT_APP_WS_URL=${REACT_APP_WS_URL:-ws://localhost:8000}
+      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_WS_URL=ws://localhost:8000
+    volumes:
+      - ./dashboard:/app
+      - /app/node_modules
     depends_on:
       - backend
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
 
 volumes:
   postgres_data:

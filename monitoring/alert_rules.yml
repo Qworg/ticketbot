@@ -1,0 +1,173 @@
+# Alert rules for Discord Ticket Bot monitoring
+
+groups:
+  - name: discord_ticket_bot_alerts
+    rules:
+      # Service availability alerts
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "Service {{ $labels.job }} on {{ $labels.instance }} has been down for more than 1 minute."
+      
+      # Backend API alerts
+      - alert: BackendHighErrorRate
+        expr: rate(errors_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate in backend API"
+          description: "Backend API error rate is {{ $value }} errors per second over the last 5 minutes."
+      
+      - alert: BackendHighResponseTime
+        expr: http_request_duration_seconds_sum / http_request_duration_seconds_count > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High response time in backend API"
+          description: "Backend API average response time is {{ $value }}s over the last 5 minutes."
+      
+      - alert: BackendDatabaseConnectionFailed
+        expr: database_connection_status != 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backend database connection failed"
+          description: "Backend cannot connect to the database."
+      
+      # Discord bot alerts
+      - alert: DiscordBotDisconnected
+        expr: discord_bot_connected != 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Discord bot is disconnected"
+          description: "Discord bot has been disconnected for more than 2 minutes."
+      
+      - alert: DiscordBotHighCommandFailureRate
+        expr: rate(discord_bot_command_failures[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High command failure rate in Discord bot"
+          description: "Discord bot command failure rate is {{ $value }} failures per second."
+      
+      # Database alerts
+      - alert: PostgreSQLDown
+        expr: pg_up != 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL database is not responding."
+      
+      - alert: PostgreSQLHighConnections
+        expr: pg_stat_database_numbackends / pg_settings_max_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL high connection usage"
+          description: "PostgreSQL is using {{ $value | humanizePercentage }} of available connections."
+      
+      - alert: PostgreSQLSlowQueries
+        expr: rate(pg_stat_database_tup_returned[5m]) / rate(pg_stat_database_tup_fetched[5m]) < 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL slow queries detected"
+          description: "PostgreSQL query efficiency is low: {{ $value | humanizePercentage }}."
+      
+      # Redis alerts
+      - alert: RedisDown
+        expr: redis_up != 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis server is not responding."
+      
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis high memory usage"
+          description: "Redis is using {{ $value | humanizePercentage }} of available memory."
+      
+      - alert: RedisHighConnections
+        expr: redis_connected_clients > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis high connection count"
+          description: "Redis has {{ $value }} connected clients."
+      
+      # System resource alerts
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is {{ $value }}% on {{ $labels.instance }}."
+      
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value }}% on {{ $labels.instance }}."
+      
+      - alert: HighDiskUsage
+        expr: (1 - (node_filesystem_avail_bytes / node_filesystem_size_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High disk usage"
+          description: "Disk usage is {{ $value }}% on {{ $labels.instance }} for {{ $labels.mountpoint }}."
+      
+      # Application-specific alerts
+      - alert: HighTicketCreationRate
+        expr: rate(tickets_created_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: info
+        annotations:
+          summary: "High ticket creation rate"
+          description: "Ticket creation rate is {{ $value }} tickets per second."
+      
+      - alert: LongRunningTickets
+        expr: tickets_open{status="open"} > 100
+        for: 1h
+        labels:
+          severity: info
+        annotations:
+          summary: "Many long-running tickets"
+          description: "There are {{ $value }} open tickets that may need attention."
+      
+      - alert: WebSocketConnectionsHigh
+        expr: active_websocket_connections > 50
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "High WebSocket connection count"
+          description: "There are {{ $value }} active WebSocket connections."

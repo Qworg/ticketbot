@@ -4,26 +4,24 @@ services:
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-ticketbot}
-      POSTGRES_USER: ${POSTGRES_USER:-ticketbot}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ticketbot_dev}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/migrations:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ticketbot}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
     restart: unless-stopped
+    networks:
+      - backend-network
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -34,18 +32,18 @@ services:
       start_period: 5s
     restart: unless-stopped
     command: redis-server --appendonly yes
+    networks:
+      - backend-network
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
       target: production
-    ports:
-      - "${BACKEND_PORT:-8000}:8000"
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-ticketbot}:${POSTGRES_PASSWORD:-ticketbot_dev}@postgres:5432/${POSTGRES_DB:-ticketbot}
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=production
     env_file:
       - .env
     depends_on:
@@ -60,6 +58,18 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    networks:
+      - backend-network
+      - frontend-network
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
 
   discord-bot:
     build:
@@ -67,10 +77,10 @@ services:
       dockerfile: Dockerfile
       target: production
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-ticketbot}:${POSTGRES_PASSWORD:-ticketbot_dev}@postgres:5432/${POSTGRES_DB:-ticketbot}
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379
       - BACKEND_URL=http://backend:8000
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=production
     env_file:
       - .env
     depends_on:
@@ -81,17 +91,26 @@ services:
       backend:
         condition: service_healthy
     restart: unless-stopped
+    networks:
+      - backend-network
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
 
   dashboard:
     build:
       context: ./dashboard
       dockerfile: Dockerfile
       target: production
-    ports:
-      - "${DASHBOARD_PORT:-3000}:80"
     environment:
-      - REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:8000}
-      - REACT_APP_WS_URL=${REACT_APP_WS_URL:-ws://localhost:8000}
+      - REACT_APP_API_URL=${REACT_APP_API_URL}
+      - REACT_APP_WS_URL=${REACT_APP_WS_URL}
     depends_on:
       - backend
     restart: unless-stopped
@@ -101,6 +120,40 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    networks:
+      - frontend-network
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - dashboard
+      - backend
+    restart: unless-stopped
+    networks:
+      - frontend-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
 
 volumes:
   postgres_data:
@@ -109,5 +162,8 @@ volumes:
     driver: local
 
 networks:
-  default:
+  backend-network:
+    driver: bridge
+    internal: true
+  frontend-network:
     driver: bridge

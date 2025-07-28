@@ -1,0 +1,71 @@
+# Prometheus configuration for Discord Ticket Bot monitoring
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alert_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  # Backend API metrics
+  - job_name: 'backend-api'
+    static_configs:
+      - targets: ['backend:8000']
+    metrics_path: '/metrics/prometheus'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    
+  # Backend health checks
+  - job_name: 'backend-health'
+    static_configs:
+      - targets: ['backend:8000']
+    metrics_path: '/metrics/health'
+    scrape_interval: 15s
+    scrape_timeout: 5s
+    
+  # Discord bot metrics
+  - job_name: 'discord-bot'
+    static_configs:
+      - targets: ['discord-bot:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    
+  # Discord bot health checks
+  - job_name: 'discord-bot-health'
+    static_configs:
+      - targets: ['discord-bot:8080']
+    metrics_path: '/health'
+    scrape_interval: 15s
+    scrape_timeout: 5s
+    
+  # PostgreSQL metrics (using postgres_exporter)
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    scrape_interval: 30s
+    
+  # Redis metrics (using redis_exporter)
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 30s
+    
+  # Node metrics (using node_exporter)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 30s
+    
+  # Nginx metrics (using nginx-prometheus-exporter)
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx-exporter:9113']
+    scrape_interval: 30s

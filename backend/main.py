@@ -9,17 +9,17 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from backend.routes import tickets_router, transcripts_router
 from backend.routes.auth import router as auth_router
+from backend.routes.metrics import router as metrics_router
 from backend.db import check_db_connection
 from backend.services.redis_service import get_redis, RedisService
 from backend.services.websocket_manager import websocket_endpoint, get_websocket_token
 from backend.error_handlers import setup_error_handlers
+from backend.logging_config import setup_logging, get_logger
+from backend.middleware.monitoring import MonitoringMiddleware
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Set up logging
+setup_logging()
+logger = get_logger(__name__)
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
@@ -42,6 +42,9 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Add monitoring middleware
+app.add_middleware(MonitoringMiddleware)
+
 # Add request ID middleware
 app.add_middleware(RequestIDMiddleware)
 
@@ -61,6 +64,7 @@ setup_error_handlers(app)
 app.include_router(auth_router)
 app.include_router(tickets_router)
 app.include_router(transcripts_router)
+app.include_router(metrics_router)
 
 # Redis service instance for application-wide use
 redis_service = None
