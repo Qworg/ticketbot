@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import uuid
+from datetime import datetime
 from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -16,6 +17,7 @@ from backend.services.websocket_manager import websocket_endpoint, get_websocket
 from backend.error_handlers import setup_error_handlers
 from backend.logging_config import setup_logging, get_logger
 from backend.middleware.monitoring import MonitoringMiddleware
+from backend.openapi_config import custom_openapi, get_openapi_tags
 
 # Set up logging
 setup_logging()
@@ -38,8 +40,58 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
 app = FastAPI(
     title="Discord Ticket Bot API",
-    description="REST API for Discord ticket management system",
-    version="1.0.0"
+    description="""
+    ## Discord Ticket Bot REST API
+    
+    A comprehensive support ticket management system that integrates Discord channels with a FastAPI backend and React-based web dashboard.
+    
+    ### Features
+    
+    * **Ticket Management**: Create, update, and close support tickets
+    * **Real-time Synchronization**: Bidirectional sync between Discord and web dashboard
+    * **Transcript Management**: Generate, search, and share ticket transcripts
+    * **Authentication**: JWT tokens for staff and API keys for external systems
+    * **Permission Control**: Role-based access control for staff members
+    * **WebSocket Support**: Real-time updates via WebSocket connections
+    
+    ### Authentication
+    
+    This API supports two authentication methods:
+    
+    1. **JWT Bearer Tokens**: For staff members accessing the web dashboard
+    2. **API Keys**: For external systems integrating with the ticket system
+    
+    Include the token in the `Authorization` header: `Bearer <token>`
+    
+    ### Rate Limiting
+    
+    API endpoints are rate-limited to prevent abuse. Rate limit information is included in response headers.
+    
+    ### Error Handling
+    
+    All endpoints return structured error responses with appropriate HTTP status codes and detailed error messages.
+    """,
+    version="1.0.0",
+    contact={
+        "name": "Discord Ticket Bot Support",
+        "url": "https://github.com/your-org/discord-ticket-bot",
+        "email": "support@example.com"
+    },
+    license_info={
+        "name": "MIT License",
+        "url": "https://opensource.org/licenses/MIT"
+    },
+    openapi_tags=get_openapi_tags(),
+    servers=[
+        {
+            "url": "http://localhost:8000",
+            "description": "Development server"
+        },
+        {
+            "url": "https://api.ticketbot.example.com",
+            "description": "Production server"
+        }
+    ]
 )
 
 # Add monitoring middleware
@@ -66,6 +118,9 @@ app.include_router(tickets_router)
 app.include_router(transcripts_router)
 app.include_router(metrics_router)
 
+# Set up custom OpenAPI schema
+app.openapi = lambda: custom_openapi(app)
+
 # Redis service instance for application-wide use
 redis_service = None
 
@@ -76,15 +131,38 @@ async def websocket_route(
     redis: RedisService = Depends(get_redis),
     user_id: int = Depends(get_websocket_token)
 ):
-    """WebSocket endpoint for real-time updates.
+    """
+    WebSocket endpoint for real-time updates.
     
-    This endpoint handles WebSocket connections for real-time
-    communication with the web dashboard.
+    This endpoint handles WebSocket connections for real-time communication with the web dashboard.
+    Clients can connect to receive live updates about:
+    
+    - Ticket status changes
+    - New messages in tickets
+    - Transcript updates
+    - System notifications
+    
+    **Authentication**: Requires a valid JWT token passed as a query parameter or in the WebSocket headers.
+    
+    **Connection Flow**:
+    1. Client connects with authentication token
+    2. Server validates token and establishes connection
+    3. Client subscribes to relevant channels (tickets, messages, etc.)
+    4. Server broadcasts real-time updates to subscribed clients
+    
+    **Message Format**:
+    ```json
+    {
+        "type": "ticket_update|message_new|transcript_update|system_notification",
+        "data": { ... },
+        "timestamp": "2024-01-01T12:00:00Z"
+    }
+    ```
     
     Args:
-        websocket: WebSocket connection
-        redis: Redis service dependency
-        user_id: User Discord ID from token authentication
+        websocket: WebSocket connection instance
+        redis: Redis service for pub/sub messaging
+        user_id: Authenticated user's Discord ID from token
     """
     await websocket_endpoint(websocket, redis, user_id)
 
@@ -117,9 +195,25 @@ async def shutdown_event():
         await redis_service.stop_listener()
 
 
-@app.get("/health")
+@app.get(
+    "/health",
+    tags=["health"],
+    summary="Health Check",
+    description="Check the health status of the API and its dependencies",
+    response_description="Health status of the service and its dependencies"
+)
 async def health_check(redis: RedisService = Depends(get_redis)):
-    """Health check endpoint for container monitoring."""
+    """
+    Health check endpoint for container monitoring and load balancers.
+    
+    Returns the health status of:
+    - The API service itself
+    - Database connection (PostgreSQL)
+    - Redis connection and pub/sub system
+    
+    Returns:
+        dict: Health status information including service status and dependency health
+    """
     db_status = await check_db_connection()
     redis_status = await redis.check_health()
     
@@ -132,17 +226,43 @@ async def health_check(redis: RedisService = Depends(get_redis)):
     return {
         "status": "healthy" if is_healthy else "unhealthy",
         "service": "discord-ticket-bot-backend",
+        "version": "1.0.0",
+        "timestamp": datetime.now().isoformat(),
         "database": db_status,
         "redis": redis_status
     }
 
 
-@app.get("/")
+@app.get(
+    "/",
+    tags=["health"],
+    summary="API Information",
+    description="Get basic information about the Discord Ticket Bot API",
+    response_description="Basic API information and available endpoints"
+)
 async def root():
-    """Root endpoint with basic API information."""
+    """
+    Root endpoint providing basic API information and navigation links.
+    
+    Returns:
+        dict: API information including version, documentation links, and available endpoints
+    """
     return {
         "message": "Discord Ticket Bot API",
         "version": "1.0.0",
-        "docs": "/docs",
-        "health": "/health"
+        "description": "REST API for Discord ticket management system",
+        "documentation": {
+            "swagger_ui": "/docs",
+            "redoc": "/redoc",
+            "openapi_json": "/openapi.json"
+        },
+        "endpoints": {
+            "health": "/health",
+            "tickets": "/api/tickets",
+            "transcripts": "/api/tickets/{ticket_id}/transcript",
+            "search": "/api/search/transcripts",
+            "auth": "/api/auth",
+            "websocket": "/ws"
+        },
+        "timestamp": datetime.now().isoformat()
     }

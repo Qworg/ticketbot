@@ -32,7 +32,60 @@ router = APIRouter(
     response_model=Ticket,
     status_code=http_status.HTTP_201_CREATED,
     summary="Create a new ticket",
-    description="Creates a new support ticket in the system."
+    description="""
+    Creates a new support ticket in the system.
+    
+    This endpoint creates a new ticket record in the database and triggers the creation
+    of a corresponding Discord channel. The ticket will be assigned a unique UUID and
+    set to "open" status by default.
+    
+    **Required Fields:**
+    - `title`: Brief description of the issue (3-255 characters)
+    - `creator_discord_id`: Discord ID of the user creating the ticket
+    - `discord_channel_id`: Discord channel ID where the ticket will be managed
+    
+    **Optional Fields:**
+    - `description`: Detailed description of the issue
+    - `priority`: Ticket priority (low, medium, high, urgent) - defaults to medium
+    
+    **Behavior:**
+    - Creates a new Discord channel with appropriate permissions
+    - Invites the creator and available staff members to the channel
+    - Sends a confirmation message with ticket details
+    - Publishes a real-time event to connected WebSocket clients
+    """,
+    responses={
+        201: {
+            "description": "Ticket created successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "id": "123e4567-e89b-12d3-a456-426614174000",
+                        "title": "Login Issue",
+                        "description": "Unable to login after password reset",
+                        "discord_channel_id": 987654321,
+                        "status": "open",
+                        "priority": "medium",
+                        "creator_discord_id": 123456789,
+                        "assigned_staff_id": None,
+                        "created_at": "2024-01-01T12:00:00Z",
+                        "updated_at": "2024-01-01T12:00:00Z",
+                        "closed_at": None
+                    }
+                }
+            }
+        },
+        409: {
+            "description": "Conflict - ticket with this channel ID already exists",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "A ticket with this Discord channel ID already exists"
+                    }
+                }
+            }
+        }
+    }
 )
 async def create_ticket(
     ticket_data: TicketCreate,
@@ -81,7 +134,62 @@ async def create_ticket(
     "",
     response_model=TicketPagination,
     summary="Get tickets with filtering and pagination",
-    description="Retrieves a paginated list of tickets with optional filtering."
+    description="""
+    Retrieves a paginated list of tickets with optional filtering and search capabilities.
+    
+    **Filtering Options:**
+    - `search`: Search in ticket titles and descriptions (case-insensitive)
+    - `status`: Filter by ticket status (open, in_progress, waiting, closed, archived)
+    - `priority`: Filter by priority level (low, medium, high, urgent)
+    - `creator_id`: Filter by the Discord ID of the ticket creator
+    - `assigned_id`: Filter by the Discord ID of the assigned staff member
+    
+    **Pagination:**
+    - `page`: Page number (1-indexed, default: 1)
+    - `size`: Items per page (1-100, default: 10)
+    
+    **Response includes:**
+    - `items`: Array of ticket objects
+    - `total`: Total number of tickets matching the filters
+    - `page`: Current page number
+    - `size`: Items per page
+    - `pages`: Total number of pages
+    
+    **Performance Notes:**
+    - Results are cached for 60 seconds to improve performance
+    - Large result sets are automatically paginated
+    - Search queries use full-text search for better performance
+    """,
+    responses={
+        200: {
+            "description": "Tickets retrieved successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "items": [
+                            {
+                                "id": "123e4567-e89b-12d3-a456-426614174000",
+                                "title": "Login Issue",
+                                "description": "Unable to login after password reset",
+                                "discord_channel_id": 987654321,
+                                "status": "open",
+                                "priority": "high",
+                                "creator_discord_id": 123456789,
+                                "assigned_staff_id": 987654321,
+                                "created_at": "2024-01-01T12:00:00Z",
+                                "updated_at": "2024-01-01T12:30:00Z",
+                                "closed_at": None
+                            }
+                        ],
+                        "total": 1,
+                        "page": 1,
+                        "size": 10,
+                        "pages": 1
+                    }
+                }
+            }
+        }
+    }
 )
 async def get_tickets(
     search: Optional[str] = Query(None, description="Search term for ticket title and description"),
